@@ -1,0 +1,416 @@
+/* ============================================================
+   PresensiKu — Design Tokens
+   Arah visual "Kop Surat": tenang, resmi, rata kiri, banyak ruang kosong,
+   tanpa gradasi, tanpa bayangan dekoratif. Aksen tunggal garis emas.
+   Sumber: design_handoff_presensiku/README.md
+
+   Tema dipasang sebagai custom property di elemen akar, sehingga mode gelap
+   hanya menukar satu peta nilai — tidak ada aturan warna yang digandakan.
+   ============================================================ */
+
+:root {
+  /* ---------- Mode terang ---------- */
+  --paper:       #F5EAD8;   /* latar halaman */
+  --surf:        #FFFFFF;   /* permukaan terangkat: nav, input, kartu */
+  --ink:         #16202E;   /* teks utama */
+  --mut:         #7C8598;   /* teks sekunder, label */
+  --line:        #E4D8C2;   /* garis pemisah & border */
+
+  --navy:        #0E2A47;   /* header, sidebar */
+  --navySide:    #0E2A47;   /* sidebar admin (beda nilai di mode gelap) */
+  --navyBtn:     #0E2A47;
+  --navyBtnInk:  #FFFFFF;
+
+  --gold:        #E8941A;   /* aksen utama, tombol primer */
+  --goldInk:     #8A4E23;   /* teks emas di latar terang, kontras aman */
+  --onGold:      #3A2400;   /* teks di atas fill emas */
+  --goldTint:    rgba(232, 148, 26, .16);
+  --goldLine:    rgba(232, 148, 26, .55);
+
+  --sage:        #7A8A5E;   /* aksen kedua: berhasil, tepat waktu */
+  --sageInk:     #4E5C38;
+  --sageTint:    rgba(122, 138, 94, .15);
+  --sageBtn:     #7A8A5E;
+
+  --danger:      #B04A28;
+  --dangerLine:  rgba(176, 74, 40, .45);
+  --dangerTint:  rgba(176, 74, 40, .08);
+
+  --chipNetral:  rgba(14, 42, 71, .08);
+  --fotoBg:      #E7DDCB;
+  --fotoInk:     #B8A98F;
+
+  --mapBg:       #E4E7DC;
+  --mapBlok:     #D6DCCB;
+  --mapBlok2:    #DCE0D2;
+  --mapJalan:    #EDEFE7;
+  --pinLabel:    #0E2A47;
+  --pinLabelInk: #FFFFFF;
+  --user:        #2C7BE5;
+
+  --bayangPerangkat: 0 34px 80px -34px rgba(14, 42, 71, .55);
+
+  /* ---------- Tipografi ---------- */
+  --font: 'Figtree', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Caprasimo', Georgia, serif;
+
+  /* ---------- Radius ---------- */
+  --r-pil: 999px;
+  --r-perangkat: 44px;
+  --r-sheet: 36px;
+  --r-hdr: 32px;
+  --r-peta-besar: 30px;
+  --r-kartu: 26px;
+  --r-bukti: 24px;
+  --r-info: 22px;
+  --r-status: 20px;
+  --r-lokasi: 18px;
+
+  /* ============================================================
+     Alias nama lama
+     ------------------------------------------------------------
+     Banyak gaya inline di app.js/admin.js masih menyebut token versi
+     sebelumnya. Memetakannya ke token baru di sini membuat seluruh
+     aplikasi ikut berganti warna — termasuk mode gelap — tanpa harus
+     menyunting ratusan baris markup.
+     ============================================================ */
+  --navy-2: var(--navy);
+  --navy-3: var(--goldInk);
+  --navy-4: var(--navy);
+  --navy-grad: var(--navy);          /* tanpa gradasi */
+
+  --gold-light: var(--gold);
+  --gold-grad: var(--gold);          /* tanpa gradasi */
+  --on-gold: var(--onGold);
+  --gold-bg: var(--goldTint);
+
+  --bg: var(--paper);
+  --bg-admin: var(--paper);
+  --surface: var(--surf);
+  --field: var(--surf);
+
+  --text: var(--ink);
+  --text-2: var(--ink);
+  --text-muted: var(--mut);
+  --text-idle: var(--mut);
+
+  --green: var(--sage);
+  --green-bg: var(--sageTint);
+  --green-dark: var(--sageInk);
+  --green-mid: var(--sageInk);
+
+  --red: var(--danger);
+  --red-bg: var(--dangerTint);
+  --red-bg-2: var(--dangerTint);
+  --red-border: var(--dangerLine);
+
+  --yellow: var(--goldInk);
+  --yellow-bg: var(--goldTint);
+
+  --blue: var(--goldInk);
+  --blue-bg: var(--chipNetral);
+  --user-dot: var(--user);
+
+  --line-2: var(--line);
+  --line-3: var(--line);
+  --line-admin: var(--line);
+
+  --r-phone: var(--r-perangkat);
+  --r-card: var(--r-kartu);
+  --r-field: var(--r-pil);
+  --r-chip: var(--r-pil);
+
+  /* Desain ini hanya memakai satu bayangan, khusus bingkai perangkat. */
+  --sh-card: none;
+  --sh-card-sm: none;
+  --sh-admin: none;
+  --sh-gold: none;
+}
+
+/* ---------- Mode gelap ---------- */
+:root[data-tema="gelap"] {
+  --paper:       #0A1826;
+  --surf:        #102639;
+  --ink:         #F1E7D6;
+  --mut:         #8199B0;
+  --line:        #1B3349;
+
+  --navy:        #102639;
+  --navySide:    #071320;
+  --navyBtn:     #1B3349;
+  --navyBtnInk:  #F1E7D6;
+
+  --gold:        #F2A63C;
+  --goldInk:     #F2A63C;
+  --onGold:      #33200A;
+  --goldTint:    rgba(242, 166, 60, .18);
+  --goldLine:    rgba(242, 166, 60, .5);
+
+  --sage:        #96A87A;
+  --sageInk:     #BFD09E;
+  --sageTint:    rgba(150, 168, 122, .18);
+  --sageBtn:     #7E9160;
+
+  --danger:      #E4805C;
+  --dangerLine:  rgba(228, 128, 92, .45);
+  --dangerTint:  rgba(228, 128, 92, .1);
+
+  --chipNetral:  rgba(241, 231, 214, .1);
+  --fotoBg:      #15293C;
+  --fotoInk:     #2E4A66;
+
+  --mapBg:       #16232D;
+  --mapBlok:     #1D2C36;
+  --mapBlok2:    #1A2831;
+  --mapJalan:    #121D26;
+  --pinLabel:    #F1E7D6;
+  --pinLabelInk: #0A1826;
+  --user:        #4E9BFF;
+
+  --bayangPerangkat: 0 34px 80px -34px rgba(10, 24, 38, .70);
+}
+
+/* ============================================================
+   Dasar
+   ============================================================ */
+
+* { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+
+html { color-scheme: light; }
+html[data-tema="gelap"] { color-scheme: dark; }
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  color: var(--ink);
+  background: var(--paper);
+}
+
+button, input, select, textarea { font-family: inherit; }
+
+::-webkit-scrollbar { width: 0; height: 0; }
+
+/* Angka waktu selalu sejajar lebar */
+.tnum, .jam-besar, .angka { font-variant-numeric: tabular-nums; }
+
+/* Judul & angka besar memakai Caprasimo; teks berjalan tidak pernah. */
+.display { font-family: var(--font-display); font-weight: 400; }
+
+/* Label kecil huruf besar di atas judul */
+.eyebrow {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--mut);
+}
+
+/* Garis emas tipis — satu-satunya ornamen dalam arah visual ini */
+.garis-emas {
+  width: 44px;
+  height: 3px;
+  background: var(--gold);
+  border-radius: var(--r-pil);
+  border: none;
+  margin: 12px 0 18px;
+}
+
+/* ============================================================
+   Animasi
+   ============================================================ */
+@keyframes ringPulse {
+  0%   { transform: scale(.7); opacity: .5; }
+  70%  { transform: scale(1.9); opacity: 0; }
+  100% { opacity: 0; }
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes popIn {
+  0%   { transform: scale(.4); opacity: 0; }
+  60%  { transform: scale(1.06); }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes drawCheck { to { stroke-dashoffset: 0; } }
+@keyframes flash {
+  0%   { opacity: 0; }
+  35%  { opacity: .9; }
+  100% { opacity: 0; }
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* Nama lama, dipakai sejumlah animasi yang belum diganti */
+@keyframes riseUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes softFloat {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-7px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+/* ============================================================
+   Primitif bersama
+   ============================================================ */
+
+.btn-gold {
+  width: 100%;
+  border: none;
+  cursor: pointer;
+  background: var(--gold);
+  color: var(--onGold);
+  font-size: 16px;
+  font-weight: 800;
+  padding: 19px;
+  border-radius: var(--r-pil);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: filter .14s ease;
+}
+.btn-gold:hover { filter: brightness(.94); }
+.btn-gold:active { filter: brightness(.88); }
+.btn-gold:disabled { opacity: .45; cursor: not-allowed; filter: none; }
+
+.btn-outline-red {
+  background: transparent;
+  border: 1.5px solid var(--dangerLine);
+  color: var(--danger);
+  font-size: 14.5px;
+  font-weight: 800;
+  padding: 16px;
+  border-radius: var(--r-pil);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  transition: background .14s ease;
+}
+.btn-outline-red:hover { background: var(--dangerTint); }
+
+.chip {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 6px 13px;
+  border-radius: var(--r-pil);
+  white-space: nowrap;
+  display: inline-block;
+}
+.chip-green  { color: var(--sageInk);  background: var(--sageTint); }
+.chip-red    { color: var(--danger);   background: var(--dangerTint); }
+.chip-yellow { color: var(--goldInk);  background: var(--goldTint); }
+.chip-blue   { color: var(--goldInk);  background: var(--goldTint); }
+.chip-grey   { color: var(--mut);      background: var(--chipNetral); }
+
+/* Sakelar mode gelap */
+.switch {
+  width: 52px; height: 30px; flex: none;
+  border-radius: var(--r-pil);
+  background: var(--line);
+  border: none; cursor: pointer; padding: 3px;
+  display: flex; align-items: center;
+  transition: background .18s ease;
+}
+.switch .knob {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: #fff; display: block;
+  transition: transform .18s ease;
+}
+.switch[aria-checked="true"] { background: var(--gold); }
+.switch[aria-checked="true"] .knob { transform: translateX(22px); }
+.switch-sm { width: 46px; height: 26px; }
+.switch-sm .knob { width: 20px; height: 20px; }
+.switch-sm[aria-checked="true"] .knob { transform: translateX(20px); }
+
+/* Fokus keyboard — jangan biarkan ring biru bawaan browser */
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+/* ============================================================
+   Peta asli (Leaflet) — penanda mengikuti palet baru
+   ============================================================ */
+
+.peta-nyata {
+  position: absolute; inset: 0;
+  z-index: 0;
+  background: var(--mapBg);
+}
+.peta-kotak {
+  position: relative;
+  border-radius: var(--r-kartu);
+  overflow: hidden;
+  background: var(--mapBg);
+}
+.peta-kotak .peta-nyata { position: absolute; inset: 0; }
+
+.marker-kosong { background: none; border: none; }
+
+.marker-kantor {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: flex-end; height: 66px;
+}
+.marker-kantor .label {
+  background: var(--pinLabel); color: var(--pinLabelInk);
+  font-size: 11px; font-weight: 800;
+  padding: 6px 12px; border-radius: var(--r-pil); white-space: nowrap;
+  font-family: var(--font);
+}
+.marker-kantor .arrow {
+  width: 0; height: 0; border-left: 5px solid transparent;
+  border-right: 5px solid transparent; border-top: 6px solid var(--pinLabel);
+}
+.marker-kantor .dot {
+  width: 30px; height: 30px; border-radius: 50%; background: var(--gold);
+  border: 3px solid var(--surf); margin-top: 2px;
+}
+
+.marker-user {
+  position: relative; width: 24px; height: 24px;
+  display: flex; align-items: center; justify-content: center;
+}
+.marker-user .pulse {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: var(--user); animation: ringPulse 2.4s ease-out infinite;
+}
+.marker-user .core {
+  position: relative; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--user); border: 3px solid var(--surf);
+}
+
+.marker-titik {
+  display: block; width: 11px; height: 11px;
+  border-radius: 50%; border: 2px solid var(--surf);
+}
+
+.atribusi { font-size: 10.5px; font-weight: 600; color: var(--mut); }
+.atribusi a { color: inherit; text-decoration: none; }
+.atribusi a:hover { text-decoration: underline; }
+
+.leaflet-container { font-family: var(--font); background: var(--mapBg); }
+.leaflet-control-zoom { border: none !important; border-radius: 14px; overflow: hidden; }
+.leaflet-control-zoom a {
+  background: var(--surf); color: var(--ink);
+  border-bottom-color: var(--line); font-weight: 700;
+}
+.leaflet-control-zoom a:hover { background: var(--paper); }
+
+/* Ubin peta ikut diredupkan di mode gelap agar tidak menyilaukan. */
+:root[data-tema="gelap"] .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(.86) contrast(.9) saturate(.7);
+}

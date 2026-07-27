@@ -1,0 +1,1104 @@
+/* ============================================================
+   PresensiKu — Aplikasi Pegawai
+   Arah visual "Kop Surat" (design_handoff_presensiku).
+
+   Satu state machine sederhana (`S.layar`) menggerakkan sembilan layar.
+   Setiap layar adalah fungsi yang mengembalikan string HTML; interaksi
+   ditangani lewat delegasi event pada atribut data-aksi.
+   ============================================================ */
+
+DB.muat();
+
+/** Hasil penerapan tautan ?setup=, ditampilkan setelah layar pertama dirender. */
+const HASIL_SETUP = DB.terapkanSetupDariUrl();
+
+const S = {
+  layar: DB.simpanan.masuk ? 'home' : 'login',
+  sekarang: new Date(),
+  bulan: { tahun: new Date().getFullYear(), bulan: new Date().getMonth() },
+  gps: { status: 'menunggu', lat: null, lng: null, akurasi: null, jarak: null, dalam: false, pesan: '' },
+  stream: null,
+  peta: null,
+  form: { jenis: 'Izin', mulai: '', selesai: '', alasan: '', lampiran: '' },
+  lihatSandi: false,
+};
+
+const $layar = document.getElementById('layar');
+const $nav = document.getElementById('nav');
+const $toast = document.getElementById('toast');
+const $sbJam = document.getElementById('sbJam');
+
+/**
+ * Profil pemilik akun. Dibaca dari DB, bukan dari konstanta PROFIL,
+ * supaya perubahan data yang dilakukan admin langsung terlihat di sini.
+ */
+let AKU = DB.profil();
+let inisialAku = inisial(AKU.nama);
+
+function segarkanProfil() {
+  AKU = DB.profil();
+  inisialAku = inisial(AKU.nama);
+}
+
+/* ============================================================
+   Utilitas tampilan
+   ============================================================ */
+
+let toastTimer;
+function toast(pesan, jenis = '') {
+  clearTimeout(toastTimer);
+  $toast.innerHTML = `<div class="toast ${jenis}">
+    ${icon(jenis === 'err' ? 'alert' : 'check', 18, 'currentColor', 2.6)}
+    <span>${esc(pesan)}</span></div>`;
+  toastTimer = setTimeout(() => { $toast.innerHTML = ''; }, 2600);
+}
+
+/** Layar yang menampilkan bottom navigation. */
+const LAYAR_BERNAV = ['home', 'riwayat', 'cuti', 'profil'];
+
+/** Header navy dengan eyebrow, garis emas, dan judul Caprasimo. */
+function headerNavy({ eyebrow, judul, kanan = '', kembali = null, sub = '' }) {
+  return `
+    <header class="hdr">
+      ${kembali ? `
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
+          <button class="btn-kembali" data-aksi="${kembali}" aria-label="Kembali">
+            ${icon('chevron-left', 20, '#fff', 2.6)}
+          </button>
+        </div>` : ''}
+      <div class="eyebrow">${esc(eyebrow)}</div>
+      <hr class="garis-emas">
+      <div class="hdr-baris">
+        <div style="min-width:0">
+          <div class="hdr-judul">${esc(judul)}</div>
+          ${sub ? `<div class="hdr-sub">${esc(sub)}</div>` : ''}
+        </div>
+        ${kanan}
+      </div>
+    </header>`;
+}
+
+/* ============================================================
+   GPS — lokasi nyata dari perangkat
+   ============================================================ */
+
+function mulaiGPS() {
+  if (!('geolocation' in navigator)) {
+    S.gps.status = 'gagal';
+    S.gps.pesan = 'Perangkat ini tidak mendukung GPS.';
+    return;
+  }
+  navigator.geolocation.watchPosition(
+    pos => {
+      const { latitude, longitude, accuracy } = pos.coords;
+      const k = DB.kantor;
+      const jarak = jarakMeter(latitude, longitude, k.lat, k.lng);
+      const berubah = S.gps.status !== 'ok' || Math.abs((S.gps.jarak ?? 0) - jarak) >= 1;
+
+      Object.assign(S.gps, {
+        status: 'ok', lat: latitude, lng: longitude, akurasi: accuracy,
+        jarak: Math.round(jarak), dalam: jarak <= k.radius, pesan: '',
+      });
+      if (!berubah) return;
+      if (S.layar === 'peta') perbaruiLayarPeta();
+      else if (S.layar === 'home') render();
+    },
+    err => {
+      S.gps.status = 'gagal';
+      S.gps.pesan = err.code === err.PERMISSION_DENIED
+        ? 'Izin lokasi ditolak. Aktifkan izin lokasi di pengaturan browser.'
+        : 'Lokasi tidak dapat dibaca. Pastikan GPS aktif.';
+      if (S.layar === 'peta') perbaruiLayarPeta();
+      else if (S.layar === 'home') render();
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
+  );
+}
+
+/**
+ * Boleh check-in? Mode demo melewati pengecekan lokasi & akurasi.
+ *
+ * Catatan penting soal kata-kata: pesan yang dikembalikan di sini tampil
+ * di layar pegawai, jadi tidak boleh menyebut jarak dalam meter maupun
+ * besar radius. Pegawai cukup tahu bahwa presensi harus dilakukan di
+ * kantor. Angka lengkapnya tetap dicatat untuk audit admin.
+ */
+function bolehAbsen() {
+  if (DB.simpanan.modeDemo) return { ok: true };
+  if (S.gps.status !== 'ok') return { ok: false, alasan: S.gps.pesan || 'Menunggu sinyal GPS…' };
+  if (S.gps.akurasi > AKURASI_MAKS) {
+    return { ok: false, alasan: 'Sinyal GPS belum akurat. Tunggu sebentar atau pindah ke tempat yang lebih terbuka.' };
+  }
+  if (!S.gps.dalam) return { ok: false, alasan: 'Anda belum berada di lokasi kantor.' };
+  return { ok: true };
+}
+
+/** Ringkasan status lokasi, tanpa angka jarak maupun radius. */
+function statusLokasi() {
+  if (DB.simpanan.modeDemo) {
+    return { kelas: '', judul: 'Mode demo aktif', sub: 'Pengecekan lokasi dilewati' };
+  }
+  if (S.gps.status === 'menunggu') {
+    return { kelas: 'netral', judul: 'Mencari sinyal GPS…', sub: 'Izinkan akses lokasi bila diminta' };
+  }
+  if (S.gps.status === 'gagal') {
+    return { kelas: 'luar', judul: 'GPS tidak aktif', sub: S.gps.pesan };
+  }
+  return S.gps.dalam
+    ? { kelas: '', judul: 'Anda berada di kantor', sub: 'Presensi dapat dilakukan' }
+    : { kelas: 'luar', judul: 'Belum berada di kantor', sub: 'Presensi hanya bisa dilakukan di kantor' };
+}
+
+/* ============================================================
+   Layar 1 — Login
+   ============================================================ */
+
+function layarLogin() {
+  return `
+  <div class="login">
+    <div class="login-atas">
+      <img class="login-logo" src="assets/icon.svg" alt="">
+      <h1 class="login-wordmark">PresensiKu</h1>
+      <hr class="garis-emas" style="margin:18px 0 16px">
+      <p class="login-desk">Presensi berbasis lokasi untuk pegawai Kementerian Pekerjaan Umum.</p>
+    </div>
+
+    <form class="login-panel" id="formLogin" novalidate>
+      <h2>Masuk</h2>
+      <div class="sub">Gunakan NIP dan kata sandi kepegawaian Anda.</div>
+
+      <div class="login-form">
+        <div>
+          <label class="field-label" for="inpNip">NIP</label>
+          <div class="field">
+            ${icon('user', 18, 'var(--mut)', 2.2)}
+            <input id="inpNip" name="nip" type="text" autocomplete="username"
+                   placeholder="198504122010011003" value="${esc(AKU.nip)}">
+          </div>
+        </div>
+        <div>
+          <label class="field-label" for="inpSandi">Kata sandi</label>
+          <div class="field">
+            ${icon('lock', 18, 'var(--mut)', 2.2)}
+            <input id="inpSandi" name="sandi" type="${S.lihatSandi ? 'text' : 'password'}"
+                   autocomplete="current-password" placeholder="Kata sandi" value="presensi123">
+            <button type="button" class="toggle" data-aksi="lihatSandi"
+                    aria-label="${S.lihatSandi ? 'Sembunyikan' : 'Tampilkan'} kata sandi">
+              ${icon(S.lihatSandi ? 'eye-off' : 'eye', 18, 'var(--mut)', 2.2)}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div id="errLogin"></div>
+      <button type="submit" class="btn-gold" style="margin-top:24px">Masuk</button>
+      <button type="button" class="login-lupa" data-aksi="lupaSandi">Lupa kata sandi?</button>
+    </form>
+  </div>`;
+}
+
+/* ============================================================
+   Layar 2 — Beranda
+   ============================================================ */
+
+function layarHome() {
+  const p = DB.presensi;
+  const izin = bolehAbsen();
+  const st = statusLokasi();
+  const kini = new Date();
+  const sisaCuti = hitungSisaCuti();
+
+  const blokAbsen = p
+    ? `<div class="kotak-checkin">
+         <span class="ikon">${icon('check', 20, 'var(--sageInk)', 3)}</span>
+         <div class="teks">
+           <div class="judul">${p.jamKeluar ? 'Presensi hari ini selesai' : 'Sudah check-in'}</div>
+           <div class="sub">Masuk pukul ${jamTampil(p.jamMasuk)}${p.jamKeluar ? ` · pulang ${jamTampil(p.jamKeluar)}` : ''}</div>
+         </div>
+         ${p.jamKeluar ? '' : '<button class="btn-pil-bahaya" data-aksi="checkout">Pulang</button>'}
+       </div>`
+    : `<button class="btn-gold" style="margin-top:20px" data-aksi="mulaiCheckin" ${izin.ok ? '' : 'disabled'}>
+         ${icon('check-clipboard', 20, 'currentColor', 2.6)} Check-in sekarang
+       </button>
+       ${izin.ok ? '' : `<div class="ket-izin">${esc(izin.alasan)}</div>`}`;
+
+  return `
+  <div class="screen">
+    ${headerNavy({
+    eyebrow: salam(S.sekarang),
+    judul: AKU.nama,
+    sub: AKU.jabatan,
+    kanan: `<div class="hdr-avatar">${inisialAku}</div>`,
+  })}
+
+    <div class="isi">
+      <div class="eyebrow">Waktu sekarang</div>
+      <span class="jam-besar" id="jamBesar">${jamTampil(fmtJam(S.sekarang))}</span>
+      <div class="tanggal-hero">${fmtTanggalPanjang(S.sekarang)}</div>
+
+      <button class="kartu-lokasi ${st.kelas}" data-aksi="peta">
+        <span class="titik-denyut"><i></i><b></b></span>
+        <span class="teks">
+          <span class="judul" style="display:block">${esc(st.judul)}</span>
+          <span class="sub" style="display:block">${esc(st.sub)}</span>
+        </span>
+        ${icon('chevron', 17, 'currentColor', 2.6)}
+      </button>
+
+      ${blokAbsen}
+
+      <div class="bagian">
+        <div class="eyebrow">Catatan hari ini</div>
+        <button class="tautan" data-aksi="riwayat">Riwayat</button>
+      </div>
+      <div>
+        <div class="baris"><span class="kiri">Jam masuk</span><span class="kanan tnum">${p ? jamTampil(p.jamMasuk) : '—'}</span></div>
+        <div class="baris"><span class="kiri">Jam pulang</span><span class="kanan tnum">${p && p.jamKeluar ? jamTampil(p.jamKeluar) : '—'}</span></div>
+        <div class="baris"><span class="kiri">Jam kerja</span><span class="kanan tnum">${jamTampil(SHIFT.masuk)} – ${jamTampil(SHIFT.pulang)}</span></div>
+        <div class="baris"><span class="kiri">Sisa cuti tahunan</span><span class="kanan">${sisaCuti.sisa} hari</span></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+/** Saldo cuti tahunan, memperhitungkan pengajuan yang sudah disetujui. */
+function hitungSisaCuti() {
+  const terpakai = DB.pengajuanSaya()
+    .filter(p => p.status === 'Disetujui' && p.jenis === 'Cuti Tahunan')
+    .reduce((n, p) => n + p.hari, AKU.cutiTerpakai ?? 0);
+  return { terpakai, sisa: Math.max(0, (AKU.cutiKuota ?? 12) - terpakai), kuota: AKU.cutiKuota ?? 12 };
+}
+
+/* ============================================================
+   Layar 3 — Verifikasi lokasi
+   ============================================================ */
+
+/** Peta ilustratif — cadangan bila Leaflet gagal dimuat (offline). */
+function petaIlustratif() {
+  return `
+    <div class="peta-ilustrasi">
+      <div class="blok" style="top:56px;left:26px;width:110px;height:78px"></div>
+      <div class="blok blok2" style="top:210px;right:22px;width:120px;height:96px"></div>
+      <div class="blok blok2" style="bottom:40px;left:44px;width:86px;height:80px"></div>
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%" aria-hidden="true">
+        <line x1="0" y1="44" x2="100" y2="52" stroke="var(--mapJalan)" stroke-width="8"/>
+        <line x1="58" y1="0" x2="50" y2="100" stroke="var(--mapJalan)" stroke-width="8"/>
+      </svg>
+      <div class="pin-kantor">
+        <div class="label">${esc(DB.kantor.nama.replace('Gedung Utama ', ''))}</div>
+        <div class="arrow"></div>
+        <div class="dot"></div>
+      </div>
+    </div>`;
+}
+
+function layarPeta() {
+  const k = DB.kantor;
+  const izin = bolehAbsen();
+  const sudah = !!DB.presensi;
+  const st = statusLokasi();
+  const adaPeta = petaTersedia();
+
+  return `
+  <div class="peta-layar">
+    <div class="peta-wadah">
+      ${adaPeta ? '<div class="peta-nyata" id="petaPegawai"></div>' : petaIlustratif()}
+    </div>
+    <div class="peta-tudung"></div>
+
+    <div class="peta-kepala">
+      <button class="btn-kembali" data-aksi="home" aria-label="Kembali">
+        ${icon('chevron-left', 20, '#fff', 2.6)}
+      </button>
+      <div class="judul">Verifikasi lokasi</div>
+    </div>
+
+    <div class="peta-sheet">
+      <div class="handle"></div>
+      <div class="eyebrow">Titik presensi</div>
+      <div class="nama">${esc(k.nama)}</div>
+      <div class="alamat">${esc(k.alamat)}</div>
+
+      <div class="kartu-sage ${st.kelas}" id="kartuSagePeta">
+        ${icon(st.kelas === 'luar' ? 'alert' : 'check', 18, 'currentColor', 2.6)}
+        <span>${esc(st.judul)}</span>
+      </div>
+
+      <div id="aksiPeta">
+        ${sudah
+      ? '<div class="catatan-privasi" style="margin-top:22px">Anda sudah melakukan presensi hari ini.</div>'
+      : `<button class="btn-gold" style="margin-top:20px" data-aksi="lanjutSelfie" ${izin.ok ? '' : 'disabled'}>
+               ${icon('camera', 20, 'currentColor', 2.4)} Lanjut ambil selfie
+             </button>
+             ${izin.ok ? '' : `<div class="ket-izin">${esc(izin.alasan)}</div>`}`}
+      </div>
+
+      <div class="catatan-privasi">Lokasi hanya dibaca saat Anda menekan tombol presensi.</div>
+      ${adaPeta ? `<div class="atribusi" style="text-align:center;margin-top:14px">${ATRIBUSI_HTML}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+/**
+ * Peta rujukan letak kantor: tanpa lingkaran radius dan tanpa titik posisi
+ * pengguna. Menampilkan keduanya sama saja dengan memberi tahu pegawai
+ * persis di mana batas geofence berada.
+ */
+function pasangPetaPegawai() {
+  const el = document.getElementById('petaPegawai');
+  if (!el) return;
+  S.peta = buatPetaPresensi(el, {
+    kantor: DB.kantor,
+    labelKantor: DB.kantor.nama.replace('Gedung Utama ', ''),
+    zoom: 17,
+    tanpaRadius: true,
+    kontrolZoom: false,
+  });
+}
+
+function lepasPeta() {
+  if (S.peta) { S.peta.hancurkan(); S.peta = null; }
+}
+
+/**
+ * Saat posisi GPS berubah dan pengguna sedang di layar Peta, perbarui
+ * bagian yang berubah saja — merender ulang seluruh layar akan membuat
+ * peta dibangun dari nol dan berkedip setiap kali sinyal masuk.
+ */
+function perbaruiLayarPeta() {
+  const st = statusLokasi();
+  const $k = document.getElementById('kartuSagePeta');
+  if ($k) {
+    $k.className = `kartu-sage ${st.kelas}`;
+    $k.innerHTML = `${icon(st.kelas === 'luar' ? 'alert' : 'check', 18, 'currentColor', 2.6)}<span>${esc(st.judul)}</span>`;
+  }
+
+  const $a = document.getElementById('aksiPeta');
+  if ($a && !DB.presensi) {
+    const izin = bolehAbsen();
+    const tombol = $a.querySelector('button');
+    if (tombol) tombol.disabled = !izin.ok;
+    let ket = $a.querySelector('.ket-izin');
+    if (izin.ok) { if (ket) ket.remove(); }
+    else {
+      if (!ket) {
+        ket = document.createElement('div');
+        ket.className = 'ket-izin';
+        $a.appendChild(ket);
+      }
+      ket.textContent = izin.alasan;
+    }
+  }
+}
+
+/* ============================================================
+   Layar 4 — Selfie
+   ============================================================ */
+
+function layarSelfie() {
+  return `
+  <div class="selfie">
+    <div class="selfie-kepala">
+      <button class="btn-kembali" data-aksi="peta" aria-label="Kembali">
+        ${icon('chevron-left', 20, '#fff', 2.6)}
+      </button>
+      <div class="judul">Verifikasi wajah</div>
+    </div>
+    <div class="selfie-tengah">
+      <div class="viewport" id="viewport">
+        <video id="kamera" autoplay playsinline muted></video>
+        <span class="ph" id="phKamera">menyalakan kamera…</span>
+        <div class="guide"></div>
+        <div class="flash" id="flash"></div>
+      </div>
+      <div class="t">Posisikan wajah di dalam bingkai</div>
+      <div class="s">Pastikan pencahayaan cukup dan lepas masker.</div>
+    </div>
+    <div class="shutter-wrap">
+      <button class="shutter" data-aksi="jepret" aria-label="Ambil foto"><span></span></button>
+    </div>
+  </div>`;
+}
+
+async function nyalakanKamera() {
+  const video = document.getElementById('kamera');
+  const ph = document.getElementById('phKamera');
+  if (!video) return;
+  video.style.display = 'none';
+  try {
+    S.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 800 } },
+      audio: false,
+    });
+    video.srcObject = S.stream;
+    video.style.display = '';
+    if (ph) ph.remove();
+  } catch (e) {
+    // Kamera ditolak / tidak ada — alur tetap dilanjutkan dengan placeholder,
+    // supaya prototipe bisa didemokan di komputer tanpa webcam.
+    console.warn('Kamera tidak tersedia:', e);
+    if (ph) ph.textContent = 'kamera tidak tersedia — foto dilewati';
+  }
+}
+
+function matikanKamera() {
+  if (S.stream) {
+    S.stream.getTracks().forEach(t => t.stop());
+    S.stream = null;
+  }
+}
+
+/** Ambil frame dari video dan simpan sebagai JPEG kecil (~40 KB). */
+function tangkapFoto() {
+  const video = document.getElementById('kamera');
+  if (!video || !video.videoWidth) return null;
+  const L = 320, T = 400;
+  const c = document.createElement('canvas');
+  c.width = L; c.height = T;
+  const ctx = c.getContext('2d');
+  ctx.translate(L, 0);
+  ctx.scale(-1, 1);
+  const rasio = Math.max(L / video.videoWidth, T / video.videoHeight);
+  const w = video.videoWidth * rasio, h = video.videoHeight * rasio;
+  ctx.drawImage(video, (L - w) / 2, (T - h) / 2, w, h);
+  return c.toDataURL('image/jpeg', 0.7);
+}
+
+/* ============================================================
+   Layar 5 — Berhasil
+   ============================================================ */
+
+function layarSukses() {
+  const p = DB.presensi || {};
+  const w = warnaStatus(p.status || 'Tepat waktu');
+  return `
+  <div class="sukses">
+    <div class="sukses-navy"></div>
+    <div class="sukses-isi">
+      <div class="cincin">
+        <div class="dalam">
+          <svg width="40" height="40" viewBox="0 0 52 52" aria-hidden="true">
+            <path d="M14 27l8 8 16-18" fill="none" stroke="#fff" stroke-width="5"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+      </div>
+      <h2>Presensi tercatat</h2>
+      <div class="sub">Kehadiran Anda sudah tersimpan.</div>
+
+      <div class="sukses-baris">
+        <div class="baris">
+          <span class="kiri">Jam masuk</span>
+          <span class="nilai-display">${jamTampil(p.jamMasuk || '—')}</span>
+        </div>
+        <div class="baris">
+          <span class="kiri">Status</span>
+          <span class="chip ${w.chip}">${esc(p.status || '')}</span>
+        </div>
+        <div class="baris">
+          <span class="kiri">Lokasi</span>
+          <span class="kanan">${esc(DB.kantor.nama)}</span>
+        </div>
+        <div class="baris">
+          <span class="kiri">Verifikasi wajah</span>
+          <span style="display:flex;align-items:center;gap:10px">
+            ${p.selfie ? `<img class="thumb-selfie" src="${p.selfie}" alt="Foto verifikasi">` : ''}
+            <span class="kanan">${p.selfie ? 'Terverifikasi' : 'Tanpa foto'}</span>
+          </span>
+        </div>
+      </div>
+
+      <button class="btn-gold" data-aksi="selesaiCheckin">Selesai</button>
+    </div>
+  </div>`;
+}
+
+/* ============================================================
+   Layar 6 — Riwayat
+   ============================================================ */
+
+/** Riwayat satu bulan, digabung dengan presensi hari ini yang tersimpan. */
+function riwayatBulan(tahun, bulan) {
+  const list = bangunRiwayat(tahun, bulan);
+  const p = DB.presensi;
+  if (p) {
+    const d = new Date(p.tanggal + 'T00:00:00');
+    if (d.getFullYear() === tahun && d.getMonth() === bulan) {
+      const entri = {
+        tanggal: p.tanggal, tgl: d.getDate(), hari: NAMA_HARI[d.getDay()].slice(0, 3),
+        status: p.status, masuk: p.jamMasuk, keluar: p.jamKeluar || '—',
+      };
+      const i = list.findIndex(x => x.tanggal === p.tanggal);
+      if (i >= 0) list[i] = entri; else list.unshift(entri);
+    }
+  }
+  return list;
+}
+
+function layarRiwayat() {
+  const { tahun, bulan } = S.bulan;
+  const list = riwayatBulan(tahun, bulan);
+  const n = s => list.filter(x => x.status === s).length;
+  const bolehMaju = new Date(tahun, bulan + 1, 1) <= new Date();
+
+  return `
+  <div class="screen">
+    ${headerNavy({
+    eyebrow: 'Rekap kehadiran',
+    judul: `${NAMA_BULAN[bulan]} ${tahun}`,
+    kanan: `<div style="display:flex;gap:10px">
+        <button class="hdr-bulat" data-aksi="bulanMundur" aria-label="Bulan sebelumnya">
+          ${icon('chevron-left', 17, '#fff', 2.6)}
+        </button>
+        <button class="hdr-bulat" data-aksi="bulanMaju" aria-label="Bulan berikutnya" ${bolehMaju ? '' : 'disabled'}>
+          ${icon('chevron', 17, '#fff', 2.6)}
+        </button>
+      </div>`,
+  })}
+
+    <div class="isi">
+      <div class="stat-kolom">
+        <div><div class="angka">${n('Tepat waktu')}</div><div class="label">Hadir</div></div>
+        <div class="garis"></div>
+        <div><div class="angka" style="color:var(--goldInk)">${n('Terlambat')}</div><div class="label">Terlambat</div></div>
+        <div class="garis"></div>
+        <div><div class="angka">${n('Izin')}</div><div class="label">Izin</div></div>
+      </div>
+
+      <div class="bagian"><div class="eyebrow">Rincian harian</div></div>
+      <div>
+        ${list.length ? list.map(r => {
+      const w = warnaStatus(r.status);
+      return `<div class="baris-hari">
+            <div class="kol-tanggal">
+              <div class="tgl">${r.tgl}</div>
+              <div class="hari">${esc(r.hari)}</div>
+            </div>
+            <div class="tengah">
+              <div class="jam">${jamTampil(r.masuk)} – ${jamTampil(r.keluar)}</div>
+              <div class="lok">${esc(DB.kantor.nama)}</div>
+            </div>
+            <span class="chip ${w.chip}">${esc(r.status)}</span>
+          </div>`;
+    }).join('') : '<div class="kosong">Belum ada data presensi bulan ini</div>'}
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ============================================================
+   Layar 7 — Izin & Cuti
+   ============================================================ */
+
+function layarCuti() {
+  const milik = DB.pengajuanSaya();
+  const c = hitungSisaCuti();
+  const persen = Math.round(c.terpakai / c.kuota * 100);
+
+  return `
+  <div class="screen">
+    ${headerNavy({ eyebrow: 'Pengajuan', judul: 'Izin & Cuti' })}
+
+    <div class="isi">
+      <div class="eyebrow">Sisa cuti tahunan</div>
+      <div class="saldo-baris" style="margin-top:12px">
+        <div>
+          <span class="saldo-angka">${c.sisa}</span>
+          <span class="saldo-satuan"> / ${c.kuota} hari</span>
+        </div>
+        <div style="text-align:right">
+          <div class="eyebrow">Terpakai</div>
+          <div class="saldo-terpakai">${c.terpakai}</div>
+        </div>
+      </div>
+      <div class="bar"><i style="width:${Math.min(100, persen)}%"></i></div>
+
+      <button class="btn-gold" style="margin-top:26px" data-aksi="cutiForm">
+        ${icon('plus', 19, 'currentColor', 2.6)} Ajukan izin atau cuti
+      </button>
+
+      <div class="bagian"><div class="eyebrow">Pengajuan saya</div></div>
+      <div>
+        ${milik.length ? milik.map(p => `
+          <div class="item-pengajuan">
+            <div class="atas">
+              <span class="jenis">${esc(p.jenis)}</span>
+              <span class="chip ${warnaStatus(p.status).chip}">${esc(p.status)}</span>
+            </div>
+            <div class="meta">${periodeTeks(p)} · ${p.hari} hari</div>
+            ${p.alasan ? `<div class="alasan">${esc(p.alasan)}</div>` : ''}
+          </div>`).join('') : '<div class="kosong">Belum ada pengajuan</div>'}
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ============================================================
+   Layar 8 — Form pengajuan
+   ============================================================ */
+
+function layarCutiForm() {
+  const f = S.form;
+  const durasi = f.mulai && f.selesai ? hariKerja(f.mulai, f.selesai) : 0;
+
+  return `
+  <div class="screen">
+    <header class="hdr" style="padding:58px 26px 26px">
+      <div style="display:flex;align-items:center;gap:14px">
+        <button class="btn-kembali" data-aksi="cuti" aria-label="Kembali">
+          ${icon('chevron-left', 20, '#fff', 2.6)}
+        </button>
+        <div class="hdr-judul" style="font-size:22px">Ajukan pengajuan</div>
+      </div>
+    </header>
+
+    <form class="isi-rapat" id="formCuti">
+      <div class="field-label">Jenis pengajuan</div>
+      <div class="segmented">
+        ${['Izin', 'Cuti Tahunan', 'Sakit'].map(j => `
+          <button type="button" class="${f.jenis === j ? 'aktif' : ''}" data-aksi="setJenis" data-jenis="${j}">
+            ${j === 'Cuti Tahunan' ? 'Cuti' : j}
+          </button>`).join('')}
+      </div>
+
+      <div class="form-grup" style="display:flex;gap:12px">
+        <div style="flex:1;min-width:0">
+          <label class="field-label" for="inpMulai">Mulai</label>
+          <div class="input-pil">
+            <input id="inpMulai" name="mulai" type="date" value="${f.mulai}" required>
+          </div>
+        </div>
+        <div style="flex:1;min-width:0">
+          <label class="field-label" for="inpSelesai">Selesai</label>
+          <div class="input-pil">
+            <input id="inpSelesai" name="selesai" type="date" value="${f.selesai}" required>
+          </div>
+        </div>
+      </div>
+
+      <div class="kartu-sage" id="kotakDurasi" style="margin-top:18px">
+        ${icon('calendar', 18, 'currentColor', 2.4)}
+        <span>${durasi ? `Total ${durasi} hari kerja` : 'Pilih tanggal terlebih dahulu'}</span>
+      </div>
+
+      <div class="form-grup">
+        <label class="field-label" for="inpAlasan">Alasan</label>
+        <div class="textarea-kotak">
+          <textarea id="inpAlasan" name="alasan" rows="4"
+                    placeholder="Tuliskan keterangan pengajuan Anda…" required>${esc(f.alasan)}</textarea>
+        </div>
+      </div>
+
+      <div class="form-grup">
+        <div class="field-label">Lampiran (opsional)</div>
+        <label class="dropzone" for="inpLampiran">
+          <span class="ikon">${icon('upload', 20, 'var(--goldInk)', 2.4)}</span>
+          <span class="t" id="namaLampiran">${f.lampiran ? esc(f.lampiran) : 'Unggah surat atau dokumen'}</span>
+          <span class="s">JPG, PNG, atau PDF · maksimal 5 MB</span>
+          <input id="inpLampiran" name="lampiran" type="file" class="sr-only" accept=".jpg,.jpeg,.png,.pdf">
+        </label>
+      </div>
+
+      <button type="submit" class="btn-gold" style="margin-top:28px">Kirim pengajuan</button>
+    </form>
+  </div>`;
+}
+
+/* ============================================================
+   Layar 9 — Profil
+   ============================================================ */
+
+function layarProfil() {
+  const kini = new Date();
+  const list = riwayatBulan(kini.getFullYear(), kini.getMonth());
+  const hadir = list.filter(x => x.status !== 'Izin').length;
+  const persen = list.length ? Math.round(hadir / list.length * 100) : 0;
+  const demo = DB.simpanan.modeDemo;
+  const gelap = temaGelap();
+
+  return `
+  <div class="screen">
+    ${headerNavy({
+    eyebrow: 'Akun',
+    judul: AKU.nama,
+    sub: AKU.jabatan,
+    kanan: `<div class="hdr-avatar hdr-avatar-lg">${inisialAku}</div>`,
+  })}
+
+    <div class="isi">
+      <div class="stat-kolom">
+        <div><div class="angka">${persen}%</div><div class="label">Kehadiran</div></div>
+        <div class="garis"></div>
+        <div><div class="angka">${hadir}</div><div class="label">Hari hadir</div></div>
+        <div class="garis"></div>
+        <div><div class="angka">${hadir * 8}</div><div class="label">Jam kerja</div></div>
+      </div>
+
+      <div class="bagian"><div class="eyebrow">Data kepegawaian</div></div>
+      <div>
+        <div class="baris"><span class="kiri">NIP</span><span class="kanan tnum">${esc(AKU.nip)}</span></div>
+        <div class="baris"><span class="kiri">Unit kerja</span><span class="kanan">${esc(AKU.unit)}</span></div>
+        <div class="baris"><span class="kiri">Jabatan</span><span class="kanan">${esc(AKU.jabatan)}</span></div>
+        <div class="baris"><span class="kiri">Titik presensi</span><span class="kanan">${esc(DB.kantor.nama)}</span></div>
+      </div>
+
+      <div class="bagian"><div class="eyebrow">Preferensi</div></div>
+      <div>
+        <div class="baris-switch">
+          <div class="teks">
+            <div class="judul">Mode gelap</div>
+            <div class="sub">Tampilan redup untuk ruangan minim cahaya</div>
+          </div>
+          <button class="switch" data-aksi="toggleGelap" role="switch"
+                  aria-checked="${gelap}" aria-label="Mode gelap">
+            <span class="knob"></span>
+          </button>
+        </div>
+        <div class="baris-switch">
+          <div class="teks">
+            <div class="judul">Mode demo</div>
+            <div class="sub">Lewati pengecekan lokasi saat presentasi</div>
+          </div>
+          <button class="switch" data-aksi="toggleDemo" role="switch"
+                  aria-checked="${demo}" aria-label="Mode demo">
+            <span class="knob"></span>
+          </button>
+        </div>
+        <button class="baris-aksi" data-aksi="notif">
+          <span class="teks"><span class="judul">Pengingat presensi</span>
+            <span class="sub">07.15 WIB setiap hari kerja</span></span>
+          ${icon('chevron', 17, 'var(--mut)', 2.6)}
+        </button>
+        <button class="baris-aksi" data-aksi="resetData">
+          <span class="teks"><span class="judul">Kembalikan data contoh</span>
+            <span class="sub">Hapus presensi dan pengajuan yang Anda buat</span></span>
+          ${icon('refresh', 17, 'var(--mut)', 2.6)}
+        </button>
+      </div>
+
+      <button class="btn-outline-red" style="width:100%;margin-top:30px" data-aksi="logout">
+        ${icon('logout', 18, 'currentColor', 2.4)} Keluar
+      </button>
+    </div>
+  </div>`;
+}
+
+/* ============================================================
+   Bottom navigation
+   ============================================================ */
+
+const NAV = [
+  { id: 'home', label: 'Beranda', ikon: 'home' },
+  { id: 'riwayat', label: 'Riwayat', ikon: 'clock' },
+  { id: 'cuti', label: 'Izin', ikon: 'calendar' },
+  { id: 'profil', label: 'Profil', ikon: 'user' },
+];
+
+function renderNav() {
+  const tampil = LAYAR_BERNAV.includes(S.layar);
+  $nav.hidden = !tampil;
+  if (!tampil) return;
+  $nav.innerHTML = NAV.map(n => `
+    <button data-aksi="${n.id}" class="${S.layar === n.id ? 'aktif' : ''}"
+            aria-current="${S.layar === n.id ? 'page' : 'false'}">
+      ${icon(n.ikon, 21, 'currentColor', 2.75)}<span>${n.label}</span>
+    </button>`).join('');
+}
+
+/* ============================================================
+   Render utama
+   ============================================================ */
+
+const LAYAR = {
+  login: layarLogin,
+  home: layarHome,
+  peta: layarPeta,
+  selfie: layarSelfie,
+  sukses: layarSukses,
+  riwayat: layarRiwayat,
+  profil: layarProfil,
+  cuti: layarCuti,
+  cutiForm: layarCutiForm,
+};
+
+function render() {
+  segarkanProfil();
+  lepasPeta();
+  $layar.innerHTML = LAYAR[S.layar]();
+  renderNav();
+  if (S.layar === 'selfie') nyalakanKamera();
+  if (S.layar === 'peta') pasangPetaPegawai();
+  pasangFormHandler();
+}
+
+function pindah(layar) {
+  if (S.layar === 'selfie' && layar !== 'selfie') matikanKamera();
+  S.layar = layar;
+  render();
+  $layar.scrollTop = 0;
+}
+
+/* ============================================================
+   Aksi
+   ============================================================ */
+
+const AKSI = {
+  home: () => pindah('home'),
+  peta: () => pindah('peta'),
+  riwayat: () => pindah('riwayat'),
+  profil: () => pindah('profil'),
+  cuti: () => pindah('cuti'),
+  cutiForm: () => {
+    const hariIni = kunciTanggal(new Date());
+    if (!S.form.mulai) { S.form.mulai = hariIni; S.form.selesai = hariIni; }
+    pindah('cutiForm');
+  },
+
+  lihatSandi: () => { S.lihatSandi = !S.lihatSandi; render(); },
+  lupaSandi: () => toast('Hubungi Biro SDM untuk mengatur ulang kata sandi.'),
+  notif: () => toast('Pengingat presensi aktif setiap hari kerja.'),
+
+  /* Alur presensi: Beranda → Verifikasi lokasi → Selfie → Berhasil */
+  mulaiCheckin: () => {
+    const izin = bolehAbsen();
+    if (!izin.ok) { toast(izin.alasan, 'err'); return; }
+    pindah('peta');
+  },
+
+  lanjutSelfie: () => {
+    const izin = bolehAbsen();
+    if (!izin.ok) { toast(izin.alasan, 'err'); return; }
+    pindah('selfie');
+  },
+
+  jepret: (el) => {
+    el.disabled = true;
+    const flash = document.getElementById('flash');
+    if (flash) { flash.classList.remove('on'); void flash.offsetWidth; flash.classList.add('on'); }
+    const foto = tangkapFoto();
+    // Tunggu animasi kilat selesai sebelum berpindah.
+    setTimeout(() => {
+      simpanCheckIn(foto);
+      matikanKamera();
+      pindah('sukses');
+    }, 620);
+  },
+
+  selesaiCheckin: () => {
+    pindah('home');
+    toast('Presensi masuk tersimpan.');
+  },
+
+  checkout: () => {
+    const p = DB.presensi;
+    if (!p || p.jamKeluar) return;
+    p.jamKeluar = fmtJam(new Date());
+    DB.tulis();
+    render();
+    toast(`Presensi pulang tercatat pukul ${jamTampil(p.jamKeluar)}.`);
+  },
+
+  bulanMundur: () => {
+    const d = new Date(S.bulan.tahun, S.bulan.bulan - 1, 1);
+    S.bulan = { tahun: d.getFullYear(), bulan: d.getMonth() };
+    render();
+  },
+  bulanMaju: () => {
+    const d = new Date(S.bulan.tahun, S.bulan.bulan + 1, 1);
+    if (d > new Date()) return;
+    S.bulan = { tahun: d.getFullYear(), bulan: d.getMonth() };
+    render();
+  },
+
+  setJenis: (el) => { S.form.jenis = el.dataset.jenis; render(); },
+
+  toggleGelap: () => {
+    const gelap = toggleTema();
+    render();
+    toast(gelap ? 'Mode gelap aktif.' : 'Mode terang aktif.');
+  },
+
+  toggleDemo: () => {
+    DB.simpanan.modeDemo = !DB.simpanan.modeDemo;
+    DB.tulis();
+    render();
+    toast(DB.simpanan.modeDemo ? 'Mode demo aktif.' : 'Mode demo dimatikan.');
+  },
+
+  resetData: () => {
+    if (confirm('Kembalikan seluruh data contoh ke kondisi awal? Presensi dan pengajuan yang Anda buat akan hilang.')) {
+      DB.reset();
+    }
+  },
+
+  logout: () => {
+    DB.simpanan.masuk = false;
+    DB.tulis();
+    matikanKamera();
+    pindah('login');
+  },
+};
+
+/** Catat check-in ke penyimpanan. */
+function simpanCheckIn(foto) {
+  const now = new Date();
+  const jam = fmtJam(now);
+  DB.simpanan.presensi = {
+    tanggal: kunciTanggal(now),
+    jamMasuk: jam,
+    jamKeluar: null,
+    status: jam <= SHIFT.batasTerlambat ? 'Tepat waktu' : 'Terlambat',
+    selfie: foto,
+    lat: S.gps.lat,
+    lng: S.gps.lng,
+    akurasi: S.gps.akurasi,
+    jarak: S.gps.status === 'ok' ? S.gps.jarak : null,
+  };
+  DB.tulis();
+}
+
+/* ============================================================
+   Event listener
+   ============================================================ */
+
+function tanganiKlik(e) {
+  const el = e.target.closest('[data-aksi]');
+  if (!el || el.disabled) return;
+  const fn = AKSI[el.dataset.aksi];
+  if (fn) { e.preventDefault(); fn(el, e); }
+}
+$layar.addEventListener('click', tanganiKlik);
+$nav.addEventListener('click', tanganiKlik);
+
+/** Form login & form pengajuan dipasang ulang tiap kali layarnya dirender. */
+function pasangFormHandler() {
+  const login = document.getElementById('formLogin');
+  if (login) {
+    login.addEventListener('submit', e => {
+      e.preventDefault();
+      const nip = login.nip.value.trim();
+      const sandi = login.sandi.value;
+      const err = document.getElementById('errLogin');
+      if (!nip || !sandi) {
+        err.innerHTML = '<div class="form-error">NIP dan kata sandi wajib diisi.</div>';
+        return;
+      }
+      DB.simpanan.masuk = true;
+      DB.tulis();
+      pindah('home');
+    });
+  }
+
+  const cuti = document.getElementById('formCuti');
+  if (cuti) {
+    const sinkron = () => {
+      S.form.mulai = cuti.mulai.value;
+      S.form.selesai = cuti.selesai.value;
+      S.form.alasan = cuti.alasan.value;
+      const n = hariKerja(S.form.mulai, S.form.selesai);
+      const kotak = document.getElementById('kotakDurasi');
+      kotak.querySelector('span').textContent =
+        n ? `Total ${n} hari kerja` : 'Pilih tanggal terlebih dahulu';
+    };
+    cuti.mulai.addEventListener('change', () => {
+      if (cuti.selesai.value < cuti.mulai.value) cuti.selesai.value = cuti.mulai.value;
+      sinkron();
+    });
+    cuti.selesai.addEventListener('change', sinkron);
+    cuti.alasan.addEventListener('input', sinkron);
+
+    cuti.lampiran.addEventListener('change', () => {
+      const f = cuti.lampiran.files[0];
+      if (!f) return;
+      if (f.size > 5 * 1024 * 1024) {
+        toast('Ukuran lampiran melebihi 5 MB.', 'err');
+        cuti.lampiran.value = '';
+        return;
+      }
+      S.form.lampiran = f.name;
+      document.getElementById('namaLampiran').textContent = f.name;
+    });
+
+    cuti.addEventListener('submit', e => {
+      e.preventDefault();
+      sinkron();
+      const { mulai, selesai, alasan, jenis } = S.form;
+      if (!mulai || !selesai) { toast('Tanggal mulai dan selesai wajib diisi.', 'err'); return; }
+      if (selesai < mulai) { toast('Tanggal selesai tidak boleh sebelum tanggal mulai.', 'err'); return; }
+      if (!alasan.trim()) { toast('Alasan pengajuan wajib diisi.', 'err'); return; }
+
+      const hari = hariKerja(mulai, selesai) || 1;
+      if (jenis === 'Cuti Tahunan' && hari > hitungSisaCuti().sisa) {
+        toast('Durasi melebihi sisa cuti tahunan Anda.', 'err');
+        return;
+      }
+
+      DB.simpanan.pengajuan.unshift({
+        id: 'P' + Date.now(),
+        pegawaiId: 1,
+        nama: AKU.nama,
+        inisial: inisialAku,
+        unit: AKU.unit,
+        jenis, mulai, selesai, hari,
+        alasan: alasan.trim(),
+        lampiran: S.form.lampiran || null,
+        status: 'Menunggu',
+        dibuat: kunciTanggal(new Date()),
+      });
+      DB.tulis();
+      S.form = { jenis: 'Izin', mulai: '', selesai: '', alasan: '', lampiran: '' };
+      pindah('cuti');
+      toast('Pengajuan terkirim ke atasan.');
+    });
+  }
+}
+
+/* ============================================================
+   Sinkron dengan panel admin
+   ------------------------------------------------------------
+   Peristiwa `storage` hanya menyala di tab LAIN pada peramban yang sama.
+   Jadi ketika admin memindahkan titik kantor atau menyunting data pegawai,
+   aplikasi ini ikut menyesuaikan tanpa perlu dimuat ulang.
+   ============================================================ */
+
+window.addEventListener('storage', e => {
+  if (e.key !== KUNCI_SIMPAN) return;
+  const kantorLama = JSON.stringify(DB.kantor);
+  const profilLama = JSON.stringify(DB.profil());
+
+  if (!DB.segarkanDariPenyimpanan()) return;
+
+  // Jarak dihitung ulang terhadap titik kantor yang baru sebelum dirender.
+  if (S.gps.status === 'ok') {
+    const k = DB.kantor;
+    const jarak = jarakMeter(S.gps.lat, S.gps.lng, k.lat, k.lng);
+    S.gps.jarak = Math.round(jarak);
+    S.gps.dalam = jarak <= k.radius;
+  }
+  render();
+
+  if (JSON.stringify(DB.kantor) !== kantorLama) toast('Titik kantor diperbarui oleh admin.');
+  else if (JSON.stringify(DB.profil()) !== profilLama) toast('Data pegawai Anda diperbarui oleh admin.');
+});
+
+/* ============================================================
+   Jam berdetak
+   ============================================================ */
+
+setInterval(() => {
+  S.sekarang = new Date();
+  const jam = jamTampil(fmtJam(S.sekarang));
+  $sbJam.textContent = jam;
+  const j = document.getElementById('jamBesar');
+  if (j) j.textContent = jam;
+}, 1000);
+
+/* ============================================================
+   Mulai
+   ============================================================ */
+
+$sbJam.textContent = jamTampil(fmtJam(S.sekarang));
+render();
+mulaiGPS();
+
+if (HASIL_SETUP) toast(HASIL_SETUP.pesan, HASIL_SETUP.ok ? 'ok' : 'err');
