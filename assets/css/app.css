@@ -537,12 +537,17 @@
 
 .kosong { text-align: center; padding: 34px 0; color: var(--mut); font-size: 13px; font-weight: 600; }
 
-/* ---------- Tautan ke panel admin (khusus prototipe) ---------- */
+/* ---------- Tautan ke panel admin (khusus prototipe) ----------
+   Hanya masuk akal saat aplikasi tampil dalam bingkai telepon, karena
+   tautannya berdiri di area kosong di sekelilingnya. Begitu bingkainya
+   hilang dan app memenuhi layar, tautan ini harus ikut hilang — kalau
+   tidak, ia menimpa header aplikasi. Ambang batasnya wajib sama persis
+   dengan media query bingkai di atas. */
 .ke-admin {
   position: fixed; top: 22px; right: 24px; z-index: 100;
-  background: var(--surf); color: var(--ink);
+  background: transparent; color: var(--mut);
   border: 1.5px solid var(--line); border-radius: var(--r-pil);
-  padding: 11px 20px; font-size: 12.5px; font-weight: 800; text-decoration: none;
+  padding: 10px 18px; font-size: 12px; font-weight: 800; text-decoration: none;
 }
-.ke-admin:hover { border-color: var(--gold); }
-@media (max-width: 480px) { .ke-admin { display: none; } }
+.ke-admin:hover { border-color: var(--gold); color: var(--ink); }
+@media (max-width: 480px), (max-height: 700px) { .ke-admin { display: none; } }
