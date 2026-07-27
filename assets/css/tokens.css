@@ -188,6 +188,15 @@ body {
 
 button, input, select, textarea { font-family: inherit; }
 
+/* Atribut `hidden` harus selalu menang atas display apa pun.
+   Peramban menyembunyikan elemen ber-`hidden` lewat aturan bawaannya
+   sendiri, dan aturan itu kalah oleh `display` apa pun yang kita tulis di
+   kelas elemennya. Akibatnya elemen yang sudah di-`hidden` dari JavaScript
+   tetap terlihat — persis yang terjadi pada navigasi bawah: `.bottom-nav`
+   memakai `display: flex`, sehingga menu Beranda/Riwayat/Izin/Profil ikut
+   muncul di layar Login dan menutupi tombol di bawahnya. */
+[hidden] { display: none !important; }
+
 ::-webkit-scrollbar { width: 0; height: 0; }
 
 /* Angka waktu selalu sejajar lebar */
