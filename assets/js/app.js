@@ -37,6 +37,7 @@ function kosongkanVerif() {
     dasar: null,         // contoh piksel saat wajah masih diam
     terakhir: null,
     diamBerturut: 0,
+    gerakBerturut: 0,
     puncak: 0,           // perubahan terbesar yang pernah terbaca
     kameraGagal: false,
     timer: null,
@@ -533,12 +534,21 @@ const VERIF = {
   LEBAR: 64, TINGGI: 80,   // ukuran cuplikan piksel yang dibandingkan
   AMBANG_PIKSEL: 26,       // selisih kecerahan yang dihitung sebagai berubah
   JEDA: 140,               // ms antar cuplikan
+  PANAS_MS: 1500,          // pemanasan kamera sebelum pengukuran dimulai
+  RAGAM_MIN: 6,            // di bawah ini gambarnya dianggap belum berisi
   DIAM_MAKS: 2,            // persen perubahan yang masih dianggap "diam"
   BUTUH_DIAM: 4,           // cuplikan diam berturut-turut sebelum dikunci
+  BUTUH_SEGAR: 7,          // cuplikan diam sebelum pembanding disegarkan
+  BUTUH_GERAK: 3,          // cuplikan berturut-turut di atas ambang
   BATAS_SABAR: 25000,      // ms; setelah ini presensi dibuka tetapi ditandai
 };
 
-/** Contoh piksel abu-abu dari bagian tengah frame — kira-kira area wajah. */
+/**
+ * Cuplikan piksel abu-abu dari KOTAK TENGAH frame — kira-kira area di dalam
+ * bingkai panduan. Bagian tepi sengaja dibuang: orang yang lewat di
+ * belakang atau tirai yang bergoyang bukan gerakan wajah pegawai, tetapi
+ * kalau ikut terukur akan terbaca seolah-olah perintahnya sudah dilakukan.
+ */
 function contohPiksel() {
   const video = document.getElementById('kamera');
   if (!video || !video.videoWidth) return null;
@@ -547,9 +557,11 @@ function contohPiksel() {
   c.width = L; c.height = T;
   const ctx = c.getContext('2d', { willReadFrequently: true });
 
-  const rasio = Math.max(L / video.videoWidth, T / video.videoHeight);
-  const w = video.videoWidth * rasio, h = video.videoHeight * rasio;
-  ctx.drawImage(video, (L - w) / 2, (T - h) / 2, w, h);
+  const sisiL = video.videoWidth * 0.62;
+  const sisiT = video.videoHeight * 0.68;
+  ctx.drawImage(video,
+    (video.videoWidth - sisiL) / 2, (video.videoHeight - sisiT) / 2, sisiL, sisiT,
+    0, 0, L, T);
 
   const d = ctx.getImageData(0, 0, L, T).data;
   const abu = new Uint8ClampedArray(L * T);
@@ -559,12 +571,33 @@ function contohPiksel() {
   return abu;
 }
 
-/** Persentase piksel yang berubah antara dua contoh, satu angka desimal. */
+/** Simpangan baku kecerahan — dipakai menolak gambar yang masih kosong. */
+function ragamPiksel(a) {
+  let s = 0;
+  for (let i = 0; i < a.length; i++) s += a[i];
+  const rata = s / a.length;
+  let v = 0;
+  for (let i = 0; i < a.length; i++) { const d = a[i] - rata; v += d * d; }
+  return Math.sqrt(v / a.length);
+}
+
+/**
+ * Persentase piksel yang berubah antara dua cuplikan.
+ *
+ * Rata-rata kecerahan tiap cuplikan dikurangkan lebih dulu. Kamera HP terus
+ * menyetel pencahayaannya sendiri, dan penyesuaian itu menggeser SELURUH
+ * piksel sekaligus — tanpa penyeimbangan ini, layar yang tiba-tiba menjadi
+ * lebih terang terbaca sebagai gerakan besar padahal wajahnya diam saja.
+ */
 function bedaPersen(a, b) {
   if (!a || !b || a.length !== b.length) return 0;
+  let sa = 0, sb = 0;
+  for (let i = 0; i < a.length; i++) { sa += a[i]; sb += b[i]; }
+  const ra = sa / a.length, rb = sb / b.length;
+
   let n = 0;
   for (let i = 0; i < a.length; i++) {
-    if (Math.abs(a[i] - b[i]) > VERIF.AMBANG_PIKSEL) n++;
+    if (Math.abs((a[i] - ra) - (b[i] - rb)) > VERIF.AMBANG_PIKSEL) n++;
   }
   return Math.round((n / a.length) * 1000) / 10;
 }
@@ -640,13 +673,21 @@ function pantauGerak() {
   // buruk atau kamera yang bermasalah.
   if (Date.now() - v.mulai > VERIF.BATAS_SABAR) { setFase('lewat'); return; }
 
+  // Kamera yang baru menyala masih menyetel pencahayaan dan fokusnya, dan
+  // cuplikan pertamanya sering gelap atau kosong. Bila keadaan itu terlanjur
+  // dikunci sebagai pembanding, gambar yang menjadi normal beberapa saat
+  // kemudian langsung terbaca sebagai gerakan besar.
+  if (Date.now() - v.mulai < VERIF.PANAS_MS) return;
+
   const kini = contohPiksel();
-  if (!kini) return;              // video belum berjalan
+  if (!kini) return;                                  // video belum berjalan
+  if (ragamPiksel(kini) < VERIF.RAGAM_MIN) return;    // gambar masih rata/kosong
+
+  const diam = v.terakhir ? bedaPersen(v.terakhir, kini) <= VERIF.DIAM_MAKS : false;
+  v.terakhir = kini;
+  if (diam) v.diamBerturut++; else v.diamBerturut = 0;
 
   if (v.fase === 'kalibrasi') {
-    if (v.terakhir && bedaPersen(v.terakhir, kini) <= VERIF.DIAM_MAKS) v.diamBerturut++;
-    else v.diamBerturut = 0;
-    v.terakhir = kini;
     if (v.diamBerturut >= VERIF.BUTUH_DIAM) {
       v.dasar = kini;
       setFase('menunggu');
@@ -656,8 +697,27 @@ function pantauGerak() {
 
   const d = bedaPersen(v.dasar, kini);
   if (d > v.puncak) v.puncak = d;
+
+  // Gerakan harus BERTAHAN beberapa cuplikan. Satu lonjakan sesaat — kamera
+  // menyetel fokus, bayangan lewat — tidak boleh langsung meloloskan.
+  if (d >= ambangTantangan()) {
+    v.gerakBerturut++;
+    aturMaju(1);
+    if (v.gerakBerturut >= VERIF.BUTUH_GERAK) setFase('lolos');
+    return;
+  }
+  v.gerakBerturut = 0;
   aturMaju(d / ambangTantangan());
-  if (d >= ambangTantangan()) setFase('lolos');
+
+  // Wajah kembali tenang → pembanding disegarkan ke keadaan tenang yang
+  // baru. Inilah yang menahan pergeseran pelan (pencahayaan berangsur
+  // berubah, HP sedikit bergeser di tangan) agar tidak menumpuk sampai
+  // melewati ambang tanpa pegawai melakukan apa pun.
+  if (v.diamBerturut >= VERIF.BUTUH_SEGAR) {
+    v.dasar = kini;
+    v.puncak = 0;
+    aturMaju(0);
+  }
 }
 
 function hentikanPantau() {
