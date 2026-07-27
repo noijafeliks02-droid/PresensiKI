@@ -26,7 +26,6 @@ const S = {
 const $layar = document.getElementById('layar');
 const $nav = document.getElementById('nav');
 const $toast = document.getElementById('toast');
-const $sbJam = document.getElementById('sbJam');
 
 /**
  * Profil pemilik akun. Dibaca dari DB, bukan dari konstanta PROFIL,
@@ -1083,21 +1082,21 @@ window.addEventListener('storage', e => {
 
 /* ============================================================
    Jam berdetak
+   ------------------------------------------------------------
+   Hanya jam besar di Beranda yang diperbarui. Status bar tiruan sudah
+   dihapus, jadi tidak ada lagi jam kecil di pojok kiri atas.
    ============================================================ */
 
 setInterval(() => {
   S.sekarang = new Date();
-  const jam = jamTampil(fmtJam(S.sekarang));
-  $sbJam.textContent = jam;
   const j = document.getElementById('jamBesar');
-  if (j) j.textContent = jam;
+  if (j) j.textContent = jamTampil(fmtJam(S.sekarang));
 }, 1000);
 
 /* ============================================================
    Mulai
    ============================================================ */
 
-$sbJam.textContent = jamTampil(fmtJam(S.sekarang));
 render();
 mulaiGPS();
 
