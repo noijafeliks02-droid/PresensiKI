@@ -1,5 +1,5 @@
 /* ============================================================
-   PresensiKu — Set ikon SVG (gaya stroke / Feather)
+   Kompas — Set ikon SVG (gaya stroke / Feather)
    Diambil dari prototipe desain agar bentuknya identik.
    Pemakaian: icon('pin', 20, '#fff')  ->  string <svg>…</svg>
    ============================================================ */

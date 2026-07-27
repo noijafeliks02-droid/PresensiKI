@@ -159,10 +159,9 @@
   align-items: center; justify-content: center; text-align: center;
   padding: var(--l-pad-atas) 30px var(--l-pad-bawah);
 }
-.login-logo {
-  width: var(--l-logo); height: var(--l-logo);
-  border-radius: calc(var(--l-logo) * .34); display: block;
-}
+/* Tanpa pembulatan sudut — lihat catatan di index.html: bagian navy lambang
+   resmi menyentuh sudut bawah dan akan terpotong bila sudutnya dibulatkan. */
+.login-logo { width: var(--l-logo); height: var(--l-logo); display: block; }
 .login-wordmark {
   font-family: var(--font-display); font-weight: 400;
   font-size: var(--l-nama); color: #fff; margin: var(--l-nama-mt) 0 0; line-height: 1;

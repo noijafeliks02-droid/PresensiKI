@@ -1,5 +1,5 @@
 /* ============================================================
-   PresensiKu — Data contoh & penyimpanan
+   Kompas — Data contoh & penyimpanan
    ------------------------------------------------------------
    Ini prototipe tanpa backend. Roster pegawai dan riwayat dibangkitkan
    secara deterministik (seeded RNG) supaya angkanya konsisten setiap kali

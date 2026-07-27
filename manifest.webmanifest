@@ -1,6 +1,6 @@
 {
-  "name": "PresensiKu — Presensi Online Berbasis Lokasi",
-  "short_name": "PresensiKu",
+  "name": "Kompas — Presensi Online Berbasis Lokasi",
+  "short_name": "Kompas",
   "description": "Sistem presensi pegawai berbasis GPS dengan verifikasi selfie.",
   "lang": "id",
   "dir": "ltr",
@@ -12,7 +12,7 @@
   "theme_color": "#0E2A47",
   "icons": [
     {
-      "src": "assets/icon.svg",
+      "src": "assets/logo-pu.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"

@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0E2A47">
-<title>PresensiKu — Sistem Presensi Online</title>
-<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<title>Kompas — Sistem Presensi Online</title>
+<link rel="icon" href="assets/logo-pu.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -17,7 +17,7 @@
     }
   } catch { /* localStorage diblokir — biarkan mode terang */ }
 </script>
-<link rel="stylesheet" href="assets/css/tokens.css?v=20260727q">
+<link rel="stylesheet" href="assets/css/tokens.css?v=20260728a">
 <style>
   body {
     min-height: 100vh; display: flex; align-items: center; justify-content: center;
@@ -25,7 +25,9 @@
   }
   .wrap { width: 100%; max-width: 760px; }
   .kepala { margin-bottom: 44px; }
-  .mark { width: 72px; height: 72px; border-radius: 26px; display: block; }
+  /* Lambang resmi ditampilkan utuh tanpa pembulatan sudut: bagian navy-nya
+     menyentuh sudut bawah, jadi sudut yang dibulatkan akan memotongnya. */
+  .mark { width: 72px; height: 72px; display: block; }
   h1 {
     font-family: var(--font-display); font-weight: 400;
     font-size: 40px; color: var(--ink); margin: 24px 0 0; line-height: 1;
@@ -63,11 +65,11 @@
 
 <div class="wrap">
   <div class="kepala">
-    <div class="eyebrow">Kementerian Pekerjaan Umum</div>
-    <img class="mark" src="assets/icon.svg" alt="" style="margin-top:18px">
-    <h1>PresensiKu</h1>
+    <div class="eyebrow">Balai Wilayah Sungai Maluku</div>
+    <img class="mark" src="assets/logo-pu.svg" alt="" style="margin-top:18px">
+    <h1>Kompas</h1>
     <hr class="garis-emas">
-    <p class="tag">Presensi berbasis lokasi untuk pegawai Kementerian Pekerjaan Umum.</p>
+    <p class="tag">Konsultan On-site Mobile Presence &amp; Attendance System.</p>
   </div>
 
   <div class="pilihan">
@@ -92,7 +94,7 @@
   </div>
 </div>
 
-<script src="assets/js/icons.js?v=20260727q"></script>
+<script src="assets/js/icons.js?v=20260728a"></script>
 <script>
   document.getElementById('ic1').innerHTML = icon('check-clipboard', 23, 'var(--goldInk)', 2.6);
   document.getElementById('ic2').innerHTML = icon('grid', 23, 'var(--goldInk)', 2.6);
@@ -108,7 +110,7 @@
      halaman dimuat ulang SEKALI dengan alamat baru supaya HTML ikut segar.
      Penjaga sessionStorage mencegah putaran muat-ulang tanpa henti. */
   (function () {
-    var VERSI = '20260727q';
+    var VERSI = '20260728a';
     fetch('versi.json?t=' + Date.now(), { cache: 'no-store' })
       .then(function (r) { return r.json(); })
       .then(function (v) {

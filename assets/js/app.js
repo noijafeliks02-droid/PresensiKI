@@ -1,5 +1,5 @@
 /* ============================================================
-   PresensiKu — Aplikasi Pegawai
+   Kompas — Aplikasi Pegawai
    Arah visual "Kop Surat" (design_handoff_presensiku).
 
    Satu state machine sederhana (`S.layar`) menggerakkan sembilan layar.
@@ -179,10 +179,10 @@ function layarLogin() {
   return `
   <div class="login">
     <div class="login-atas">
-      <img class="login-logo" src="assets/icon.svg" alt="">
-      <h1 class="login-wordmark">PresensiKu</h1>
+      <img class="login-logo" src="assets/logo-pu.svg" alt="">
+      <h1 class="login-wordmark">Kompas</h1>
       <hr class="garis-emas login-garis">
-      <p class="login-desk">Presensi berbasis lokasi untuk pegawai Kementerian Pekerjaan Umum.</p>
+      <p class="login-desk">Konsultan On-site Mobile Presence &amp; Attendance System.</p>
     </div>
 
     <form class="login-panel" id="formLogin" novalidate>

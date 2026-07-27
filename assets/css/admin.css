@@ -17,7 +17,9 @@ body { background: var(--paper); }
   position: sticky; top: 0; height: 100vh;
 }
 .brand { display: flex; align-items: center; gap: 12px; padding: 0 8px; }
-.brand .mark { width: 42px; height: 42px; border-radius: 14px; flex: none; display: block; }
+/* Lambang resmi tanpa pembulatan sudut — bagian navy-nya menyentuh sudut
+   bawah, jadi sudut yang dibulatkan akan memotong lambangnya. */
+.brand .mark { width: 42px; height: 42px; flex: none; display: block; }
 .brand .nama {
   font-family: var(--font-display); font-weight: 400;
   font-size: 19px; color: #fff; line-height: 1;
@@ -99,7 +101,7 @@ body { background: var(--paper); }
   padding: 44px 40px 34px;
   text-align: center;
 }
-.masuk-logo { width: 62px; height: 62px; border-radius: 21px; display: block; margin: 0 auto 22px; }
+.masuk-logo { width: 62px; height: 62px; display: block; margin: 0 auto 22px; }
 .masuk-kartu h1 {
   font-family: var(--font-display); font-weight: 400;
   font-size: 32px; color: var(--ink); margin: 8px 0 0; line-height: 1.1;
@@ -135,7 +137,7 @@ body { background: var(--paper); }
 @media (max-height: 820px) {
   .masuk-panggung { padding: 24px; }
   .masuk-kartu { padding: 32px 36px 24px; }
-  .masuk-logo { width: 52px; height: 52px; border-radius: 18px; margin-bottom: 16px; }
+  .masuk-logo { width: 52px; height: 52px; margin-bottom: 16px; }
   .masuk-kartu h1 { font-size: 27px; }
   .masuk-garis { margin: 14px auto 13px; }
   .masuk-desk { margin-bottom: 20px; }

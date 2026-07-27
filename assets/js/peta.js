@@ -1,5 +1,5 @@
 /* ============================================================
-   PresensiKu — Peta asli (Leaflet + OpenStreetMap)
+   Kompas — Peta asli (Leaflet + OpenStreetMap)
    ------------------------------------------------------------
    Basemap memakai CARTO Positron: gratis, tanpa API key, dan warnanya
    kalem sehingga pin emas & lingkaran radius tetap menonjol.

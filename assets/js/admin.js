@@ -1,5 +1,5 @@
 /* ============================================================
-   PresensiKu — Panel Admin
+   Kompas — Panel Admin
    Enam view yang dipilih lewat sidebar. Sidebar & topbar dirender ulang
    hanya saat view berganti; isi konten dirender ulang setiap kali filter
    atau data berubah, sehingga fokus kotak pencarian tidak hilang.
@@ -86,9 +86,9 @@ function renderSidebar() {
   const gelap = temaGelap();
   $sidebar.innerHTML = `
     <div class="brand">
-      <img class="mark" src="assets/icon.svg" alt="">
+      <img class="mark" src="assets/logo-pu.svg" alt="">
       <div>
-        <div class="nama">PresensiKu</div>
+        <div class="nama">Kompas</div>
         <div class="sub">Panel Admin</div>
       </div>
     </div>
@@ -129,7 +129,7 @@ function renderTopbar() {
   const pakaiCari = ['kehadiran', 'bukti', 'pegawai', 'cuti'].includes(V.view);
   $topbar.innerHTML = `
     <div style="flex:1;min-width:0">
-      <div class="eyebrow">Kementerian Pekerjaan Umum</div>
+      <div class="eyebrow">Balai Wilayah Sungai Maluku</div>
       <div class="judul">${h.judul}</div>
       <div class="sub">${h.sub}</div>
     </div>
@@ -1510,8 +1510,8 @@ function renderGerbang() {
   $gerbang.innerHTML = `
     <div class="masuk-panggung">
       <form class="masuk-kartu" id="formAdmin" novalidate>
-        <img class="masuk-logo" src="assets/icon.svg" alt="">
-        <div class="eyebrow">Kementerian Pekerjaan Umum</div>
+        <img class="masuk-logo" src="assets/logo-pu.svg" alt="">
+        <div class="eyebrow">Balai Wilayah Sungai Maluku</div>
         <h1>Panel Admin</h1>
         <hr class="garis-emas masuk-garis">
         <p class="masuk-desk">

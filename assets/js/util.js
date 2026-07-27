@@ -1,5 +1,5 @@
 /* ============================================================
-   PresensiKu — Fungsi bantu bersama
+   Kompas — Fungsi bantu bersama
    Geofencing, format tanggal Indonesia, dan ekspor laporan.
    ============================================================ */
 
@@ -191,7 +191,7 @@ function exportPDF(judul, subjudul, judulKolom, baris) {
 <h1>${esc(judul)}</h1>
 <div class="sub">${esc(subjudul)}</div>
 <table><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table>
-<footer>Dicetak ${fmtTanggalPanjang(new Date())} pukul ${fmtJam(new Date())} WIB · PresensiKu</footer>
+<footer>Dicetak ${fmtTanggalPanjang(new Date())} pukul ${fmtJam(new Date())} WIB · Kompas</footer>
 </body></html>`);
   w.document.close();
   w.focus();
