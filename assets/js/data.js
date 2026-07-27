@@ -122,7 +122,7 @@ const BELAKANG = ['Santoso', 'Nurhayati', 'Prasetyo', 'Wijaya', 'Hidayat', 'Rahm
   'Firmansyah', 'Maulida', 'Pratama', 'Handayani', 'Nugroho', 'Safitri',
   'Permana', 'Wibowo'];
 
-const TOTAL_PEGAWAI = 248;
+const TOTAL_PEGAWAI = 26;
 
 /**
  * Bangun daftar pegawai lengkap. Deterministik: seed tetap 20260101 supaya
@@ -149,11 +149,12 @@ function bangunPegawai() {
 
 /**
  * Status kehadiran seluruh pegawai untuk hari ini.
- * Komposisinya dikunci ke angka yang dipakai di desain — 213 tepat waktu,
- * 18 terlambat, 9 izin/cuti, 8 belum absen dari 248 pegawai — supaya
- * persentase di kartu statistik admin (85,9% dan 7,3%) selalu cocok.
+ *
+ * Komposisinya dikunci — bukan diundi — supaya angka di kartu statistik
+ * admin selalu konsisten dan masuk akal. Jumlahnya HARUS sama dengan
+ * TOTAL_PEGAWAI, kalau tidak sisanya akan diisi 'Tepat waktu' begitu saja.
  */
-const KOMPOSISI_HARI_INI = { 'Tepat waktu': 213, 'Terlambat': 18, 'Izin/Cuti': 9, 'Belum absen': 8 };
+const KOMPOSISI_HARI_INI = { 'Tepat waktu': 22, 'Terlambat': 2, 'Izin/Cuti': 1, 'Belum absen': 1 };
 
 function bangunKehadiranHariIni(pegawai) {
   const r = bikinRng(4242);
@@ -170,8 +171,8 @@ function bangunKehadiranHariIni(pegawai) {
     [status[i], status[j]] = [status[j], status[i]];
   }
 
-  // Sebagian kecil yang hadir tercatat di luar radius — ini yang perlu diaudit admin.
-  let sisaLuarRadius = 7;
+  // Satu orang yang hadir tercatat di luar radius — ini yang perlu diaudit admin.
+  let sisaLuarRadius = 1;
 
   const k = KANTOR_DEFAULT;
   const mPerLat = 111320;
@@ -190,7 +191,7 @@ function bangunKehadiranHariIni(pegawai) {
       lokasi = r() < 0.7 ? 'Gedung Utama' : 'Gedung Menteri';
       dalamRadius = true;
     }
-    if (dalamRadius && sisaLuarRadius > 0 && r() < 0.04) {
+    if (dalamRadius && sisaLuarRadius > 0 && r() < 0.12) {
       dalamRadius = false;
       sisaLuarRadius--;
     }
@@ -242,9 +243,11 @@ function bangunTren() {
   for (let i = 6; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
+    // Angkanya diskalakan ke TOTAL_PEGAWAI: hari kerja sekitar 19–22 orang
+    // tepat waktu dan 1–3 terlambat, akhir pekan nyaris kosong.
     const akhirPekan = d.getDay() === 0 || d.getDay() === 6;
-    const tepat = akhirPekan ? 8 + Math.floor(r() * 10) : 185 + Math.floor(r() * 30);
-    const telat = akhirPekan ? 1 + Math.floor(r() * 3) : 10 + Math.floor(r() * 18);
+    const tepat = akhirPekan ? Math.floor(r() * 2) : 19 + Math.floor(r() * 4);
+    const telat = akhirPekan ? 0 : 1 + Math.floor(r() * 3);
     hasil.push({ tanggal: new Date(d), label: NAMA_HARI[d.getDay()].slice(0, 3), tepat, telat });
   }
   return hasil;
@@ -311,8 +314,11 @@ function bangunPengajuan(pegawai) {
     'Perawatan pasca operasi ringan', 'Mengantar orang tua berobat',
   ];
   const hasil = [];
-  for (let i = 0; i < 14; i++) {
-    const p = pegawai[1 + Math.floor(r() * 60)];
+  for (let i = 0; i < 8; i++) {
+    // Indeks dibatasi panjang daftar yang sebenarnya. Sebelumnya dipatok
+    // sampai 60 — aman saat pegawainya 248, tetapi menabrak data kosong
+    // begitu jumlahnya dikecilkan.
+    const p = pegawai[1 + Math.floor(r() * (pegawai.length - 1))];
     const mulai = new Date();
     mulai.setDate(mulai.getDate() - 10 + Math.floor(r() * 24));
     const durasi = 1 + Math.floor(r() * 3);
