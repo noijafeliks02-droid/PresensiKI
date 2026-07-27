@@ -24,6 +24,8 @@ const V = {
 const PER_HALAMAN = 15;
 const PER_GALERI = 24;
 
+const $gerbang = document.getElementById('gerbang');
+const $app = document.getElementById('app');
 const $sidebar = document.getElementById('sidebar');
 const $topbar = document.getElementById('topbar');
 const $konten = document.getElementById('konten');
@@ -115,10 +117,10 @@ function renderSidebar() {
           <div class="nm">${ADMIN.nama}</div>
           <div class="rl">${ADMIN.unit}</div>
         </div>
-        <button data-aksi="keluar" aria-label="Keluar">
-          ${icon('logout', 17, 'rgba(245,234,216,.55)', 2.4)}
-        </button>
       </div>
+      <button class="tombol-keluar" data-aksi="keluar">
+        ${icon('logout', 17, 'currentColor', 2.4)}<span>Keluar</span>
+      </button>
     </div>`;
 }
 
@@ -1493,7 +1495,89 @@ function renderKonten() {
   if (V.view === 'lokasi') pasangPetaKantor();
 }
 
+/* ============================================================
+   Gerbang masuk panel admin
+   ============================================================ */
+
+function renderGerbang() {
+  $app.hidden = true;
+  // Isi panel dikosongkan, bukan sekadar disembunyikan: setelah keluar,
+  // nama admin dan data pegawai tidak boleh tertinggal di halaman.
+  $sidebar.innerHTML = '';
+  $topbar.innerHTML = '';
+  $konten.innerHTML = '';
+  $gerbang.hidden = false;
+  $gerbang.innerHTML = `
+    <div class="masuk-panggung">
+      <form class="masuk-kartu" id="formAdmin" novalidate>
+        <img class="masuk-logo" src="assets/icon.svg" alt="">
+        <div class="eyebrow">Kementerian Pekerjaan Umum</div>
+        <h1>Panel Admin</h1>
+        <hr class="garis-emas masuk-garis">
+        <p class="masuk-desk">
+          Masuk dengan akun kepegawaian yang berwenang mengelola data presensi.
+        </p>
+
+        <div class="form-row">
+          <label for="admNip">NIP</label>
+          <input id="admNip" name="nip" type="text" autocomplete="username"
+                 value="${esc(AKUN_ADMIN.nip)}" placeholder="Nomor Induk Pegawai">
+        </div>
+        <div class="form-row">
+          <label for="admSandi">Kata sandi</label>
+          <input id="admSandi" name="sandi" type="password" autocomplete="current-password"
+                 value="${esc(AKUN_ADMIN.sandi)}" placeholder="Kata sandi">
+        </div>
+
+        <div id="errAdmin"></div>
+        <button type="submit" class="btn btn-emas masuk-tombol">
+          ${icon('lock', 17, 'currentColor', 2.4)} Masuk ke Panel Admin
+        </button>
+
+        <div class="masuk-kaki">
+          <a href="index.html">Kembali ke halaman depan</a>
+          <a href="pegawai.html">Aplikasi pegawai</a>
+        </div>
+        <div class="masuk-catatan">
+          Prototipe demonstrasi — kredensial contoh sudah terisi. Pemeriksaan
+          sandi masih berjalan di peramban, sehingga belum menjadi pengamanan
+          sungguhan sampai backend dipasang.
+        </div>
+      </form>
+    </div>`;
+
+  document.getElementById('formAdmin').addEventListener('submit', e => {
+    e.preventDefault();
+    const nip = document.getElementById('admNip').value.trim();
+    const sandi = document.getElementById('admSandi').value;
+    const err = document.getElementById('errAdmin');
+    const gagal = (pesan) => {
+      err.innerHTML = `<div class="modal-bahaya" style="margin-top:16px">${esc(pesan)}</div>`;
+    };
+
+    if (!nip || !sandi) return gagal('NIP dan kata sandi wajib diisi.');
+    if (nip !== AKUN_ADMIN.nip || sandi !== AKUN_ADMIN.sandi) {
+      return gagal('NIP atau kata sandi tidak cocok.');
+    }
+
+    DB.simpanan.masukAdmin = true;
+    DB.tulis();
+    render();
+    toast(`Selamat datang, ${ADMIN.nama}.`);
+  });
+}
+
+/* ============================================================
+   Render utama
+   ============================================================ */
+
 function render() {
+  // Selama belum masuk, tidak ada satu pun data panel yang dirender.
+  if (!DB.simpanan.masukAdmin) { renderGerbang(); return; }
+
+  $gerbang.hidden = true;
+  $gerbang.innerHTML = '';
+  $app.hidden = false;
   renderSidebar();
   renderTopbar();
   renderKonten();
@@ -1516,7 +1600,34 @@ function pindahView(view) {
 
 const AKSI = {
   notif: () => toast(`${DB.pengajuanMenunggu().length} pengajuan menunggu persetujuan Anda.`),
-  keluar: () => { location.href = 'index.html'; },
+  keluar: () => {
+    bukaModal(`
+      <div class="modal-head">
+        <div style="flex:1">
+          <div class="t">Keluar dari Panel Admin</div>
+          <div class="s">Anda perlu memasukkan NIP dan kata sandi lagi untuk kembali masuk.</div>
+        </div>
+        <button type="button" class="modal-tutup" data-aksi="tutupModal" aria-label="Tutup">
+          ${icon('close', 18, 'var(--text-2)', 2.4)}
+        </button>
+      </div>
+      <div class="modal-kaki">
+        <button type="button" class="btn" data-aksi="tutupModal">Batal</button>
+        <button type="button" class="btn btn-navy" data-aksi="keluarPasti">
+          ${icon('logout', 16, 'currentColor', 2.4)} Keluar
+        </button>
+      </div>`);
+  },
+
+  keluarPasti: () => {
+    tutupModal();
+    DB.simpanan.masukAdmin = false;
+    DB.tulis();
+    V.view = 'dashboard';       // sesi berikutnya mulai dari awal lagi
+    V.cari = '';
+    render();
+    toast('Anda telah keluar dari panel admin.');
+  },
 
   toggleGelap: () => {
     const gelap = toggleTema();

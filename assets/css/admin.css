@@ -70,7 +70,84 @@ body { background: var(--paper); }
 }
 .sidebar-foot .nm { font-size: 13.5px; font-weight: 800; color: #fff; }
 .sidebar-foot .rl { font-size: 11.5px; color: rgba(245, 234, 216, .55); font-weight: 600; margin-top: 3px; }
-.sidebar-foot button { background: none; border: none; cursor: pointer; display: flex; padding: 6px; }
+
+/* Tombol keluar sengaja diberi label, bukan ikon telanjang — sebelumnya
+   hanya berupa ikon kecil dan mudah terlewat. */
+.tombol-keluar {
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  width: 100%; margin-top: 14px; padding: 11px 14px;
+  background: rgba(245, 234, 216, .08);
+  border: 1px solid rgba(245, 234, 216, .18);
+  border-radius: var(--r-pil);
+  color: rgba(245, 234, 216, .82);
+  font-size: 13px; font-weight: 800; cursor: pointer;
+  transition: background .14s ease, color .14s ease;
+}
+.tombol-keluar:hover { background: rgba(245, 234, 216, .16); color: #fff; }
+
+/* ---------- Gerbang masuk ---------- */
+.masuk-panggung {
+  min-height: 100vh; min-height: 100dvh;
+  background: var(--navy);
+  display: flex; align-items: center; justify-content: center;
+  padding: 40px 24px;
+}
+.masuk-kartu {
+  width: 100%; max-width: 430px;
+  background: var(--paper);
+  border-radius: var(--r-sheet);
+  padding: 44px 40px 34px;
+  text-align: center;
+}
+.masuk-logo { width: 62px; height: 62px; border-radius: 21px; display: block; margin: 0 auto 22px; }
+.masuk-kartu h1 {
+  font-family: var(--font-display); font-weight: 400;
+  font-size: 32px; color: var(--ink); margin: 8px 0 0; line-height: 1.1;
+}
+.masuk-garis { margin: 18px auto 16px; }
+.masuk-desk {
+  font-size: 13.5px; font-weight: 600; color: var(--mut);
+  line-height: 1.6; margin: 0 auto 26px; max-width: 32ch;
+}
+.masuk-kartu .form-row { text-align: left; margin-bottom: 16px; }
+.masuk-kartu input[type="password"] {
+  width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-pil);
+  background: var(--surf); padding: 14px 20px;
+  font-size: 14px; font-weight: 600; color: var(--ink); outline: none;
+}
+.masuk-kartu input:focus { border-color: var(--gold); }
+.masuk-tombol { width: 100%; justify-content: center; margin-top: 22px; padding: 15px; }
+
+.masuk-kaki {
+  display: flex; justify-content: center; gap: 20px; margin-top: 22px;
+  font-size: 12.5px; font-weight: 700;
+}
+.masuk-kaki a { color: var(--goldInk); text-decoration: none; }
+.masuk-kaki a:hover { text-decoration: underline; }
+.masuk-catatan {
+  margin-top: 20px; padding-top: 18px;
+  border-top: 1px solid var(--line);
+  font-size: 11.5px; font-weight: 600; color: var(--mut); line-height: 1.6;
+}
+
+/* Layar laptop yang pendek — rapatkan supaya kartunya muat utuh tanpa
+   halaman ikut menggulir. */
+@media (max-height: 820px) {
+  .masuk-panggung { padding: 24px; }
+  .masuk-kartu { padding: 32px 36px 24px; }
+  .masuk-logo { width: 52px; height: 52px; border-radius: 18px; margin-bottom: 16px; }
+  .masuk-kartu h1 { font-size: 27px; }
+  .masuk-garis { margin: 14px auto 13px; }
+  .masuk-desk { margin-bottom: 20px; }
+  .masuk-tombol { margin-top: 18px; }
+  .masuk-kaki { margin-top: 18px; }
+  .masuk-catatan { margin-top: 16px; padding-top: 14px; }
+}
+
+@media (max-width: 520px) {
+  .masuk-kartu { padding: 34px 24px 26px; }
+  .masuk-kartu h1 { font-size: 27px; }
+}
 
 /* ---------- Area utama ---------- */
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }

@@ -84,6 +84,16 @@ const PROFIL = {
   cutiTerpakai: 4,
 };
 
+/**
+ * Kredensial demo panel admin.
+ *
+ * Ini prototipe tanpa backend, jadi pemeriksaannya berjalan di peramban.
+ * Gerbang ini menahan orang yang tidak tahu kata sandinya — bukan orang
+ * yang bisa membuka alat pengembang. Pengamanan sungguhan baru mungkin
+ * setelah ada backend yang memeriksa sandi di sisi server.
+ */
+const AKUN_ADMIN = { nip: '196804251994031002', sandi: 'admin123' };
+
 const UNIT_KERJA = [
   'Ditjen Bina Marga',
   'Ditjen Cipta Karya',
@@ -388,7 +398,8 @@ const DB = {
     // selama layar verifikasi terbuka, tidak pernah ikut disimpan.
     presensi: null,
     pengajuan: [],
-    masuk: false,        // status login pemilik akun
+    masuk: false,        // status login pemilik akun di aplikasi pegawai
+    masukAdmin: false,   // status login di panel admin
     modeDemo: false,     // lewati pengecekan lokasi (untuk demo di luar kantor)
 
     // Suntingan data pegawai dari panel admin. Roster dasar tetap
