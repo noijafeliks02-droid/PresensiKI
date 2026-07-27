@@ -423,17 +423,19 @@ function layarSelfie() {
         <video id="kamera" autoplay playsinline muted></video>
         <span class="ph" id="phKamera">menyalakan kamera…</span>
         <div class="guide"></div>
-
-        <!-- Pita aba-aba: baru terisi saat tombol ditekan, karena
-             perintahnya memang diundi pada detik itu. -->
-        <div class="aba" id="aba" hidden>
-          <span class="aba-ikon" id="abaIkon"></span>
-          <span class="aba-teks" id="abaTeks"></span>
-        </div>
         <div class="hitung" id="hitung" hidden></div>
-
         <div class="flash" id="flash"></div>
       </div>
+
+      <!-- Kartu aba-aba sengaja di LUAR bingkai kamera. Bingkai itu lonjong
+           dan memotong isinya (overflow: hidden), sehingga ujung kiri-kanan
+           tulisan ikut terpangkas bila diletakkan di dalam. Isinya baru
+           terisi saat tombol ditekan — perintahnya memang diundi detik itu. -->
+      <div class="aba" id="aba" hidden>
+        <span class="aba-ikon" id="abaIkon"></span>
+        <span class="aba-teks" id="abaTeks"></span>
+      </div>
+
       <div class="t" id="verifJudul">Posisikan wajah di dalam bingkai</div>
       <div class="s" id="verifKet">
         Tekan tombol, lalu ikuti perintah gerak yang muncul sebelum foto diambil.
@@ -551,7 +553,7 @@ function statusVerif(judul, ket, kelas = '') {
 function tampilAbaAba(t) {
   const aba = document.getElementById('aba');
   if (!aba) return;
-  document.getElementById('abaIkon').innerHTML = icon(t.ikon, 19, 'currentColor', 2.6);
+  document.getElementById('abaIkon').innerHTML = icon(t.ikon, 21, 'currentColor', 2.6);
   document.getElementById('abaTeks').textContent = t.teks;
   aba.hidden = false;
 }
@@ -587,8 +589,10 @@ function mulaiVerifikasi(tombol) {
   const pikselAwal = contohPiksel();
   const fotoAwal = tangkapFoto(200, 250, 0.5);
 
+  // Perintahnya sudah terbaca jelas di kartu, jadi baris status ini cukup
+  // mengingatkan agar posisinya ditahan sampai hitungan habis.
   tampilAbaAba(t);
-  statusVerif('Ikuti perintah di atas', 'Tahan posisinya sampai hitungan selesai.');
+  statusVerif('Tahan posisi Anda', 'Foto diambil begitu hitungan mencapai nol.');
 
   let sisa = VERIF.ABA_ABA;
   tulisHitung(sisa);
