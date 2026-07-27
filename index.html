@@ -17,7 +17,7 @@
     }
   } catch { /* localStorage diblokir — biarkan mode terang */ }
 </script>
-<link rel="stylesheet" href="assets/css/tokens.css?v=20260727f">
+<link rel="stylesheet" href="assets/css/tokens.css?v=20260727g">
 <style>
   body {
     min-height: 100vh; display: flex; align-items: center; justify-content: center;
@@ -92,12 +92,36 @@
   </div>
 </div>
 
-<script src="assets/js/icons.js?v=20260727f"></script>
+<script src="assets/js/icons.js?v=20260727g"></script>
 <script>
   document.getElementById('ic1').innerHTML = icon('check-clipboard', 23, 'var(--goldInk)', 2.6);
   document.getElementById('ic2').innerHTML = icon('grid', 23, 'var(--goldInk)', 2.6);
   document.getElementById('ch1').innerHTML = icon('chevron', 15, 'currentColor', 2.6);
   document.getElementById('ch2').innerHTML = icon('chevron', 15, 'currentColor', 2.6);
+</script>
+<script>
+  /* Pemeriksa versi.
+     GitHub Pages menyimpan HTML di cache hingga 10 menit, sehingga halaman
+     lama bisa terus memanggil aset lama meski versi baru sudah terbit —
+     penanda ?v= pada aset jadi percuma karena HTML-nya sendiri basi.
+     Berkas versi.json selalu diambil segar (no-store); bila berbeda,
+     halaman dimuat ulang SEKALI dengan alamat baru supaya HTML ikut segar.
+     Penjaga sessionStorage mencegah putaran muat-ulang tanpa henti. */
+  (function () {
+    var VERSI = '20260727g';
+    fetch('versi.json?t=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (v) {
+        if (!v || v.versi === VERSI) return;
+        var kunci = 'presensiku.muatulang.' + v.versi;
+        try {
+          if (sessionStorage.getItem(kunci)) return;
+          sessionStorage.setItem(kunci, '1');
+        } catch (e) { return; }
+        location.replace(location.pathname + '?v=' + v.versi);
+      })
+      .catch(function () { /* offline - pakai versi yang ada */ });
+  })();
 </script>
 </body>
 </html>

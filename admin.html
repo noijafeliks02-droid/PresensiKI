@@ -19,8 +19,8 @@
 <!-- Leaflet: peta asli. Bila offline, gagal dimuat dan panel otomatis
      kembali memakai peta ilustratif (lihat petaTersedia() di peta.js). -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="assets/css/tokens.css?v=20260727f">
-<link rel="stylesheet" href="assets/css/admin.css?v=20260727f">
+<link rel="stylesheet" href="assets/css/tokens.css?v=20260727g">
+<link rel="stylesheet" href="assets/css/admin.css?v=20260727g">
 </head>
 <body>
 
@@ -37,10 +37,34 @@
 <div id="toast"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="assets/js/icons.js?v=20260727f"></script>
-<script src="assets/js/util.js?v=20260727f"></script>
-<script src="assets/js/data.js?v=20260727f"></script>
-<script src="assets/js/peta.js?v=20260727f"></script>
-<script src="assets/js/admin.js?v=20260727f"></script>
+<script src="assets/js/icons.js?v=20260727g"></script>
+<script src="assets/js/util.js?v=20260727g"></script>
+<script src="assets/js/data.js?v=20260727g"></script>
+<script src="assets/js/peta.js?v=20260727g"></script>
+<script src="assets/js/admin.js?v=20260727g"></script>
+<script>
+  /* Pemeriksa versi.
+     GitHub Pages menyimpan HTML di cache hingga 10 menit, sehingga halaman
+     lama bisa terus memanggil aset lama meski versi baru sudah terbit —
+     penanda ?v= pada aset jadi percuma karena HTML-nya sendiri basi.
+     Berkas versi.json selalu diambil segar (no-store); bila berbeda,
+     halaman dimuat ulang SEKALI dengan alamat baru supaya HTML ikut segar.
+     Penjaga sessionStorage mencegah putaran muat-ulang tanpa henti. */
+  (function () {
+    var VERSI = '20260727g';
+    fetch('versi.json?t=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (v) {
+        if (!v || v.versi === VERSI) return;
+        var kunci = 'presensiku.muatulang.' + v.versi;
+        try {
+          if (sessionStorage.getItem(kunci)) return;
+          sessionStorage.setItem(kunci, '1');
+        } catch (e) { return; }
+        location.replace(location.pathname + '?v=' + v.versi);
+      })
+      .catch(function () { /* offline - pakai versi yang ada */ });
+  })();
+</script>
 </body>
 </html>
