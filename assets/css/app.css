@@ -54,17 +54,25 @@
 .sinyal { display: flex; align-items: flex-end; gap: 2px; height: 11px; }
 .sinyal i { width: 3px; background: #fff; border-radius: 1px; opacity: .95; display: block; }
 .statusbar .net { font-size: 10.5px; font-weight: 800; color: #fff; letter-spacing: .5px; }
+/* Bagian dalam status bar diberi awalan `sb-`. Sebelumnya isi baterai
+   bernama `.isi` — sama persis dengan kelas wadah konten layar — sehingga
+   padding 34px/26px/120px dari aturan itu ikut menempel dan menggelembungkan
+   baterai mungil ini menjadi kotak putih besar di pojok kanan atas.
+   Nama berawalan membuat tabrakan seperti itu tidak mungkin terulang. */
 .baterai { display: flex; align-items: center; gap: 2px; }
-.baterai .body { width: 23px; height: 12px; border: 1.5px solid #fff; border-radius: 4px; padding: 1.5px; }
-.baterai .isi { height: 100%; width: 72%; background: #fff; border-radius: 2px; }
-.baterai .tip { width: 1.5px; height: 5px; background: #fff; border-radius: 2px; }
+.baterai .sb-kotak {
+  width: 23px; height: 12px; flex: none;
+  border: 1.5px solid #fff; border-radius: 4px; padding: 1.5px;
+}
+.baterai .sb-daya { height: 100%; width: 72%; background: #fff; border-radius: 2px; }
+.baterai .sb-ujung { width: 1.5px; height: 5px; flex: none; background: #fff; border-radius: 2px; }
 
 /* Layar terang (bukan header navy) butuh status bar gelap agar terbaca. */
 .statusbar.gelap .jam, .statusbar.gelap .net { color: var(--ink); }
 .statusbar.gelap .sinyal i,
-.statusbar.gelap .baterai .isi,
-.statusbar.gelap .baterai .tip { background: var(--ink); }
-.statusbar.gelap .baterai .body { border-color: var(--ink); }
+.statusbar.gelap .baterai .sb-daya,
+.statusbar.gelap .baterai .sb-ujung { background: var(--ink); }
+.statusbar.gelap .baterai .sb-kotak { border-color: var(--ink); }
 
 /* ---------- Kerangka layar ---------- */
 .screen {
