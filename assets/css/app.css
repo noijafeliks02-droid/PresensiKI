@@ -552,17 +552,41 @@
 /* ============================================================
    Penguncian mode layar penuh
    ------------------------------------------------------------
-   Saat bingkai perangkat hilang, elemen yang menempel di tepi dikunci ke
-   layar (viewport), bukan ke halaman — jam, navigasi bawah, dan toast
-   tetap diam sekalipun peramban menggulirkan halamannya sendiri
-   (mis. saat bilah alamat HP menyusut).
+   Tujuannya satu: jam, navigasi bawah, dan notifikasi TIDAK BOLEH bergerak
+   sedikit pun saat pengguna menggulir. Butuh tiga lapis, karena masing-masing
+   menutup celah yang berbeda:
+
+   1. Dokumennya dikunci (`overflow: hidden` + tinggi tepat satu layar).
+      Tanpa ini, halaman induk masih bisa ikut bergulir.
+   2. `overscroll-behavior: none` mematikan efek tarik-memantul. Di HP —
+      terutama iOS Safari dan Chrome Android — memantulkan halaman akan
+      menyeret seluruh isinya, termasuk elemen ber-`position: fixed`.
+      Inilah penyebab jam terlihat ikut bergeser, dan gejalanya tidak
+      muncul di peramban desktop sehingga mudah terlewat saat diuji.
+   3. Elemen tepi dipaku ke layar dengan `position: fixed`, dan area gulir
+      diberi `overscroll-behavior: contain` supaya gulirannya tidak menjalar
+      ke dokumen saat menyentuh ujung.
 
    Blok ini WAJIB berada di akhir berkas: aturan dasarnya memakai
    position absolute dengan spesifisitas sama, jadi yang menang adalah
    yang ditulis paling akhir.
    ============================================================ */
 @media (max-width: 480px), (max-height: 899px) {
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  .stage { height: 100%; min-height: 0; overflow: hidden; }
+
   .statusbar { position: fixed; }
   .bottom-nav { position: fixed; }
   .toast { position: fixed; }
+
+  /* Gulirannya berhenti di dalam layar, tidak menjalar ke dokumen. */
+  .screen,
+  .peta-sheet,
+  .login,
+  .sukses { overscroll-behavior: contain; }
 }
