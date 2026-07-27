@@ -26,8 +26,24 @@ const S = {
   mode: 'masuk',
 
   /** Keadaan tantangan verifikasi wajah pada layar Selfie. */
-  verif: { sibuk: false, ulang: 0, tantangan: null },
+  verif: kosongkanVerif(),
 };
+
+/** Keadaan awal tantangan verifikasi — dipakai tiap kali layar Selfie dibuka. */
+function kosongkanVerif() {
+  return {
+    fase: 'kalibrasi',   // kalibrasi → menunggu → lolos | lewat
+    tantangan: null,
+    dasar: null,         // contoh piksel saat wajah masih diam
+    terakhir: null,
+    diamBerturut: 0,
+    puncak: 0,           // perubahan terbesar yang pernah terbaca
+    kameraGagal: false,
+    timer: null,
+    mulai: 0,
+    sibuk: false,
+  };
+}
 
 const $layar = document.getElementById('layar');
 const $nav = document.getElementById('nav');
@@ -423,26 +439,28 @@ function layarSelfie() {
         <video id="kamera" autoplay playsinline muted></video>
         <span class="ph" id="phKamera">menyalakan kamera…</span>
         <div class="guide"></div>
-        <div class="hitung" id="hitung" hidden></div>
         <div class="flash" id="flash"></div>
       </div>
 
-      <!-- Kartu aba-aba sengaja di LUAR bingkai kamera. Bingkai itu lonjong
+      <!-- Kartu perintah sengaja di LUAR bingkai kamera. Bingkai itu lonjong
            dan memotong isinya (overflow: hidden), sehingga ujung kiri-kanan
-           tulisan ikut terpangkas bila diletakkan di dalam. Isinya baru
-           terisi saat tombol ditekan — perintahnya memang diundi detik itu. -->
+           tulisan ikut terpangkas bila diletakkan di dalam. -->
       <div class="aba" id="aba" hidden>
         <span class="aba-ikon" id="abaIkon"></span>
         <span class="aba-teks" id="abaTeks"></span>
       </div>
 
-      <div class="t" id="verifJudul">Posisikan wajah di dalam bingkai</div>
-      <div class="s" id="verifKet">
-        Tekan tombol, lalu ikuti perintah gerak yang muncul sebelum foto diambil.
-      </div>
+      <!-- Bilah kemajuan tanpa angka. Pegawai perlu tahu gerakannya sedang
+           terbaca, tetapi menampilkan persentasenya sama saja dengan
+           memberi tahu persis seberapa sedikit gerakan yang bisa lolos. -->
+      <div class="maju" id="maju" hidden><i id="majuIsi"></i></div>
+
+      <div class="t" id="verifJudul">Menyiapkan verifikasi…</div>
+      <div class="s" id="verifKet">Tatap kamera dan diam sejenak.</div>
     </div>
     <div class="shutter-wrap">
-      <button class="shutter" data-aksi="jepret" aria-label="Mulai verifikasi wajah"><span></span></button>
+      <button class="shutter" data-aksi="jepret" disabled
+              aria-label="Ambil foto presensi"><span></span></button>
     </div>
   </div>`;
 }
@@ -465,6 +483,7 @@ async function nyalakanKamera() {
     // supaya prototipe bisa didemokan di komputer tanpa webcam.
     console.warn('Kamera tidak tersedia:', e);
     if (ph) ph.textContent = 'kamera tidak tersedia — foto dilewati';
+    S.verif.kameraGagal = true;
   }
 }
 
@@ -493,22 +512,30 @@ function tangkapFoto(L = 320, T = 400, mutu = 0.7) {
 /* ============================================================
    Tantangan gerak — pengaman verifikasi wajah
    ------------------------------------------------------------
-   Urutannya: tombol ditekan → satu frame netral diambil diam-diam →
-   perintah gerak diundi dan ditampilkan → hitung mundur → frame kedua
-   diambil. Kedua frame dibandingkan piksel demi piksel; bila wajahnya
-   praktis tidak berubah, berarti yang ada di depan kamera tidak mengikuti
-   perintah — foto cetak atau layar HP yang didiamkan akan tertahan di sini.
+   Begitu layar Selfie terbuka, satu perintah gerak diundi dan langsung
+   ditampilkan. Kamera lalu dipantau terus-menerus:
 
-   Perintahnya baru diundi setelah tombol ditekan, jadi tidak bisa
-   disiapkan sebelumnya. Kedua frame dan bunyi perintahnya ikut tersimpan,
-   sehingga admin dapat memeriksa sendiri apakah gerakannya benar dilakukan.
+     1. kalibrasi — menunggu wajah diam beberapa saat, lalu keadaan diam
+        itu dikunci sebagai pembanding;
+     2. menunggu  — tiap cuplikan dibandingkan dengan pembanding tadi;
+     3. lolos     — begitu perubahannya melewati ambang, tombol foto dibuka.
+
+   Tombol presensi terkunci sampai gerakannya benar-benar terbaca, jadi
+   tidak ada hitung mundur dan tidak ada foto yang diambil diam-diam —
+   hanya satu foto, yaitu yang sengaja diambil pegawai sambil menahan pose.
+
+   Perbandingannya memakai cuplikan piksel 64×80 di memori, tidak pernah
+   disimpan. Ambang per piksel 26 membuat derau sensor dan getaran tangan
+   terbaca nol, sehingga foto cetak yang didiamkan tidak pernah lolos.
    ============================================================ */
 
 const VERIF = {
-  LEBAR: 64, TINGGI: 80,   // ukuran contoh piksel yang dibandingkan
+  LEBAR: 64, TINGGI: 80,   // ukuran cuplikan piksel yang dibandingkan
   AMBANG_PIKSEL: 26,       // selisih kecerahan yang dihitung sebagai berubah
-  ABA_ABA: 3,              // detik hitung mundur
-  MAKS_ULANG: 3,           // setelah ini presensi tetap diterima, tetapi ditandai
+  JEDA: 140,               // ms antar cuplikan
+  DIAM_MAKS: 2,            // persen perubahan yang masih dianggap "diam"
+  BUTUH_DIAM: 4,           // cuplikan diam berturut-turut sebelum dikunci
+  BATAS_SABAR: 25000,      // ms; setelah ini presensi dibuka tetapi ditandai
 };
 
 /** Contoh piksel abu-abu dari bagian tengah frame — kira-kira area wajah. */
@@ -558,94 +585,131 @@ function tampilAbaAba(t) {
   aba.hidden = false;
 }
 
-function sembunyikanAbaAba() {
-  const aba = document.getElementById('aba');
-  const h = document.getElementById('hitung');
-  if (aba) aba.hidden = true;
-  if (h) h.hidden = true;
+/** Isi bilah kemajuan, 0–1. Sengaja tanpa angka. */
+function aturMaju(bagian) {
+  const bar = document.getElementById('maju');
+  const isi = document.getElementById('majuIsi');
+  if (!bar || !isi) return;
+  bar.hidden = false;
+  isi.style.width = Math.min(100, Math.max(0, bagian * 100)).toFixed(0) + '%';
 }
 
-function tulisHitung(n) {
-  const h = document.getElementById('hitung');
-  if (!h) return;
-  h.hidden = false;
-  h.textContent = n;
-  h.classList.remove('denyut');
-  void h.offsetWidth;
-  h.classList.add('denyut');
+function ambangTantangan() {
+  const t = S.verif.tantangan;
+  return (t && t.ambang != null) ? t.ambang : AMBANG_GERAK;
 }
 
-/** Jalankan satu putaran tantangan, dari tombol ditekan sampai foto tersimpan. */
-function mulaiVerifikasi(tombol) {
-  if (S.verif.sibuk) return;
-  S.verif.sibuk = true;
-  tombol.disabled = true;
+/** Pindah fase dan sesuaikan seluruh tampilan layar Selfie. */
+function setFase(f) {
+  const v = S.verif;
+  v.fase = f;
 
-  const t = pilihTantangan();
-  S.verif.tantangan = t;
+  const boleh = (f === 'lolos' || f === 'lewat');
+  const tombol = document.querySelector('[data-aksi="jepret"]');
+  if (tombol) tombol.disabled = !boleh;
+  if (boleh) hentikanPantau();
 
-  // Frame netral diambil lebih dulu, sebelum perintahnya terlihat — jadi
-  // pegawai belum sempat bergerak. Inilah pembandingnya nanti.
-  const pikselAwal = contohPiksel();
-  const fotoAwal = tangkapFoto(200, 250, 0.5);
+  const bar = document.getElementById('maju');
+  if (bar) bar.hidden = boleh;
 
-  // Perintahnya sudah terbaca jelas di kartu, jadi baris status ini cukup
-  // mengingatkan agar posisinya ditahan sampai hitungan habis.
-  tampilAbaAba(t);
-  statusVerif('Tahan posisi Anda', 'Foto diambil begitu hitungan mencapai nol.');
-
-  let sisa = VERIF.ABA_ABA;
-  tulisHitung(sisa);
-  const tik = setInterval(() => {
-    sisa--;
-    if (sisa > 0) { tulisHitung(sisa); return; }
-    clearInterval(tik);
-    S.verif.tik = null;
-    tuntaskanVerifikasi(tombol, t, pikselAwal, fotoAwal);
-  }, 1000);
-  S.verif.tik = tik;
-}
-
-function tuntaskanVerifikasi(tombol, t, pikselAwal, fotoAwal) {
-  const flash = document.getElementById('flash');
-  if (flash) { flash.classList.remove('on'); void flash.offsetWidth; flash.classList.add('on'); }
-
-  const pikselPose = contohPiksel();
-  const gerak = bedaPersen(pikselAwal, pikselPose);
-  const foto = tangkapFoto();
-  sembunyikanAbaAba();
-
-  // Bila salah satu frame tidak terambil — kamera ditolak, atau videonya
-  // belum sempat berjalan — tidak ada yang bisa dibandingkan. Alur tetap
-  // diteruskan supaya prototipe bisa didemokan di komputer tanpa webcam,
-  // tetapi hasilnya ditandai agar admin tahu bedanya.
-  const bisaUkur = !!(pikselAwal && pikselPose);
-  const ambang = t.ambang ?? AMBANG_GERAK;
-  const kurang = bisaUkur && gerak < ambang;
-
-  if (kurang && S.verif.ulang < VERIF.MAKS_ULANG - 1) {
-    S.verif.ulang++;
-    S.verif.sibuk = false;
-    tombol.disabled = false;
-    statusVerif('Gerakan tidak terdeteksi',
-      `Wajah Anda nyaris tidak berubah. Coba lagi — percobaan ${S.verif.ulang + 1} dari ${VERIF.MAKS_ULANG}.`,
+  if (f === 'kalibrasi') {
+    statusVerif('Menyiapkan verifikasi…', 'Tatap kamera dan diam sejenak.');
+  } else if (f === 'menunggu') {
+    statusVerif('Lakukan perintah di atas',
+      'Tombol foto terbuka begitu gerakan Anda terbaca.');
+  } else if (f === 'lolos') {
+    statusVerif('Gerakan terverifikasi',
+      'Tahan posisinya, lalu tekan tombol untuk mengambil foto.', 'lolos');
+  } else {
+    statusVerif('Gerakan tidak dapat dipastikan',
+      'Presensi tetap bisa dilanjutkan, tetapi akan ditandai untuk diperiksa admin.',
       'gagal');
+  }
+}
+
+/** Satu cuplikan pemantauan. Dipanggil berulang selama layar Selfie terbuka. */
+function pantauGerak() {
+  const v = S.verif;
+  if (v.fase === 'lolos' || v.fase === 'lewat') return;
+
+  // Kamera ditolak atau tidak ada — tidak ada yang bisa dipantau. Alur tetap
+  // dibuka supaya prototipe bisa didemokan di komputer tanpa webcam.
+  if (v.kameraGagal) { setFase('lewat'); return; }
+
+  // Jaring pengaman: presensi tidak boleh terkunci total gara-gara cahaya
+  // buruk atau kamera yang bermasalah.
+  if (Date.now() - v.mulai > VERIF.BATAS_SABAR) { setFase('lewat'); return; }
+
+  const kini = contohPiksel();
+  if (!kini) return;              // video belum berjalan
+
+  if (v.fase === 'kalibrasi') {
+    if (v.terakhir && bedaPersen(v.terakhir, kini) <= VERIF.DIAM_MAKS) v.diamBerturut++;
+    else v.diamBerturut = 0;
+    v.terakhir = kini;
+    if (v.diamBerturut >= VERIF.BUTUH_DIAM) {
+      v.dasar = kini;
+      setFase('menunggu');
+    }
     return;
   }
 
-  const hasil = !bisaUkur ? 'tanpaKamera' : (kurang ? 'lemah' : 'lolos');
+  const d = bedaPersen(v.dasar, kini);
+  if (d > v.puncak) v.puncak = d;
+  aturMaju(d / ambangTantangan());
+  if (d >= ambangTantangan()) setFase('lolos');
+}
+
+function hentikanPantau() {
+  if (S.verif.timer) { clearInterval(S.verif.timer); S.verif.timer = null; }
+}
+
+/** Siapkan layar Selfie: undi perintah, tampilkan, lalu mulai memantau. */
+function siapkanVerifikasi() {
+  hentikanPantau();
+  // Dipanggil tepat setelah nyalakanKamera(). Fungsi itu menunggu izin
+  // kamera, jadi penandaan gagalnya baru tiba setelah baris-baris ini —
+  // aman untuk memulai dari keadaan bersih.
+  S.verif = kosongkanVerif();
+  S.verif.tantangan = pilihTantangan();
+  S.verif.mulai = Date.now();
+
+  tampilAbaAba(S.verif.tantangan);
+  setFase('kalibrasi');
+  aturMaju(0);
+  S.verif.timer = setInterval(pantauGerak, VERIF.JEDA);
+}
+
+/** Ambil foto presensi. Hanya bisa dijalankan setelah gerakannya terbaca. */
+function ambilFotoPresensi(tombol) {
+  const v = S.verif;
+  if (v.sibuk) return;
+  if (v.fase !== 'lolos' && v.fase !== 'lewat') return;
+  v.sibuk = true;
+  tombol.disabled = true;
+  hentikanPantau();
+
+  const flash = document.getElementById('flash');
+  if (flash) { flash.classList.remove('on'); void flash.offsetWidth; flash.classList.add('on'); }
+
+  // Perubahan pada detik foto diambil ikut dicatat: bila pegawai sudah
+  // kembali ke posisi netral, angkanya kecil dan admin bisa melihatnya.
+  const saatFoto = v.dasar ? bedaPersen(v.dasar, contohPiksel()) : null;
+  const foto = tangkapFoto();
+  const t = v.tantangan;
+
   const verif = {
     tantangan: t.id,
     teks: t.teks,
-    gerak,
-    ambang,
-    hasil,
-    percobaan: S.verif.ulang + 1,
+    gerak: v.puncak,
+    ambang: ambangTantangan(),
+    saatFoto,
+    hasil: v.fase === 'lolos' ? 'lolos' : (v.kameraGagal ? 'tanpaKamera' : 'lemah'),
   };
 
   setTimeout(() => {
-    if (S.mode === 'keluar') simpanCheckOut(foto, fotoAwal, verif);
-    else simpanCheckIn(foto, fotoAwal, verif);
+    if (S.mode === 'keluar') simpanCheckOut(foto, verif);
+    else simpanCheckIn(foto, verif);
     matikanKamera();
     pindah('sukses');
   }, 420);
@@ -1049,7 +1113,7 @@ function render() {
   lepasPeta();
   $layar.innerHTML = LAYAR[S.layar]();
   renderNav();
-  if (S.layar === 'selfie') nyalakanKamera();
+  if (S.layar === 'selfie') { nyalakanKamera(); siapkanVerifikasi(); }
   if (S.layar === 'peta') pasangPetaPegawai();
   pasangFormHandler();
   if (S.layar === 'login') paskanLogin();
@@ -1080,9 +1144,8 @@ if (document.fonts && document.fonts.ready) {
 
 function pindah(layar) {
   if (S.layar === 'selfie' && layar !== 'selfie') {
-    // Hitung mundur yang masih berjalan harus dihentikan, kalau tidak ia
-    // akan memotret layar yang sudah ditinggalkan.
-    if (S.verif.tik) { clearInterval(S.verif.tik); S.verif.tik = null; }
+    // Pemantauan kamera harus berhenti begitu layarnya ditinggalkan.
+    hentikanPantau();
     S.verif.sibuk = false;
     matikanKamera();
   }
@@ -1135,11 +1198,10 @@ const AKSI = {
   lanjutSelfie: () => {
     const izin = bolehAbsen();
     if (!izin.ok) { toast(izin.alasan, 'err'); return; }
-    S.verif = { sibuk: false, ulang: 0, tantangan: null, tik: null };
-    pindah('selfie');
+    pindah('selfie');   // siapkanVerifikasi() dijalankan dari render()
   },
 
-  jepret: (el) => mulaiVerifikasi(el),
+  jepret: (el) => ambilFotoPresensi(el),
 
   selesaiCheckin: () => {
     const pulang = S.mode === 'keluar';
@@ -1190,7 +1252,7 @@ const AKSI = {
 };
 
 /** Catat presensi masuk ke penyimpanan. */
-function simpanCheckIn(foto, fotoAwal, verif) {
+function simpanCheckIn(foto, verif) {
   const now = new Date();
   const jam = fmtJam(now);
   DB.simpanan.presensi = {
@@ -1199,7 +1261,6 @@ function simpanCheckIn(foto, fotoAwal, verif) {
     jamKeluar: null,
     status: jam <= SHIFT.batasTerlambat ? 'Tepat waktu' : 'Terlambat',
     selfie: foto,
-    selfieAwal: fotoAwal,
     verifikasi: verif,
     lat: S.gps.lat,
     lng: S.gps.lng,
@@ -1210,12 +1271,11 @@ function simpanCheckIn(foto, fotoAwal, verif) {
 }
 
 /** Catat presensi pulang — foto, lokasi, dan hasil verifikasinya sendiri. */
-function simpanCheckOut(foto, fotoAwal, verif) {
+function simpanCheckOut(foto, verif) {
   const p = DB.simpanan.presensi;
   if (!p || p.jamKeluar) return;
   p.jamKeluar = fmtJam(new Date());
   p.selfieKeluar = foto;
-  p.selfieAwalKeluar = fotoAwal;
   p.verifikasiKeluar = verif;
   p.latKeluar = S.gps.lat;
   p.lngKeluar = S.gps.lng;

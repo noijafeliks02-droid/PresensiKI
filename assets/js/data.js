@@ -380,10 +380,12 @@ const DB = {
   simpanan: {
     kantor: { ...KANTOR_DEFAULT },
     // presensi: { tanggal, jamMasuk, jamKeluar, status,
-    //             selfie, selfieAwal, verifikasi, lat, lng, akurasi, jarak,
-    //             selfieKeluar, selfieAwalKeluar, verifikasiKeluar,
+    //             selfie, verifikasi, lat, lng, akurasi, jarak,
+    //             selfieKeluar, verifikasiKeluar,
     //             latKeluar, lngKeluar, akurasiKeluar, jarakKeluar }
-    // `verifikasi` = { tantangan, teks, gerak, hasil } — lihat TANTANGAN.
+    // `verifikasi` = { tantangan, teks, gerak, ambang, saatFoto, hasil }.
+    // Satu foto saja per tahap; pembanding geraknya hanya hidup di memori
+    // selama layar verifikasi terbuka, tidak pernah ikut disimpan.
     presensi: null,
     pengajuan: [],
     masuk: false,        // status login pemilik akun
@@ -460,9 +462,8 @@ const DB = {
   },
 
   /* Urutan foto yang dikorbankan lebih dulu saat kuota penyimpanan habis.
-     Frame netral paling ringan nilainya (hanya pembanding), lalu foto
-     pulang, dan foto masuk dipertahankan paling akhir. */
-  URUT_LEPAS: ['selfieAwal', 'selfieAwalKeluar', 'selfieKeluar', 'selfie'],
+     Foto pulang dilepas duluan; foto masuk dipertahankan paling akhir. */
+  URUT_LEPAS: ['selfieKeluar', 'selfie'],
 
   tulis() {
     const coba = () => {
@@ -732,10 +733,8 @@ const DB = {
       dalamRadius: rekamAku.jarak == null ? null : rekamAku.jarak <= this.kantor.radius,
 
       // Bukti presensi pulang dan hasil tantangan gerak.
-      fotoAwal: rekamAku.selfieAwal || null,
       verifikasi: rekamAku.verifikasi || null,
       fotoKeluar: rekamAku.selfieKeluar || null,
-      fotoAwalKeluar: rekamAku.selfieAwalKeluar || null,
       verifikasiKeluar: rekamAku.verifikasiKeluar || null,
       latKeluar: rekamAku.latKeluar ?? null, lngKeluar: rekamAku.lngKeluar ?? null,
       akurasiKeluar: rekamAku.akurasiKeluar ?? null, jarakKeluar: rekamAku.jarakKeluar ?? null,
@@ -762,9 +761,9 @@ const DB = {
         dalamRadius: p.jamMasuk === '—' ? null : p.dalamRadius,
         // Pegawai contoh tidak punya rekaman tantangan gerak — hanya akun
         // yang dipakai demo yang benar-benar melewati verifikasi wajah.
-        fotoAwal: null, verifikasi: null,
+        verifikasi: null,
         fotoKeluar: p.jamKeluar === '—' ? null : fotoContoh(p),
-        fotoAwalKeluar: null, verifikasiKeluar: null,
+        verifikasiKeluar: null,
         latKeluar: null, lngKeluar: null, akurasiKeluar: null,
         jarakKeluar: null, dalamRadiusKeluar: null,
       }));
@@ -779,8 +778,8 @@ const DB = {
           jamMasuk: '—', jamKeluar: '—', status: 'Belum absen',
           foto: null, fotoAsli: false,
           lat: null, lng: null, akurasi: null, jarak: null, dalamRadius: null,
-          fotoAwal: null, verifikasi: null,
-          fotoKeluar: null, fotoAwalKeluar: null, verifikasiKeluar: null,
+          verifikasi: null,
+          fotoKeluar: null, verifikasiKeluar: null,
           latKeluar: null, lngKeluar: null, akurasiKeluar: null,
           jarakKeluar: null, dalamRadiusKeluar: null,
         });

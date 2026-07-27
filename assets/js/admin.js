@@ -550,11 +550,12 @@ function dialogBukti(pegawaiId) {
           : '<span class="chip chip-red">Di luar radius</span>')],
       ['Perintah Gerak', verif && verif.teks ? esc(verif.teks) : '—'],
       ['Hasil Verifikasi', `<span class="chip ${lv.chip}">${lv.teks}</span>`],
-      ['Perubahan Wajah', verif && verif.gerak != null
+      ['Gerak Tertinggi', verif && verif.gerak != null
         ? `<span class="mono">${verif.gerak}%</span>${verif.ambang != null
           ? ` <span style="color:var(--mut);font-weight:600">(min ${verif.ambang}%)</span>` : ''}`
         : '—'],
-      ['Percobaan', verif && verif.percobaan ? `${verif.percobaan}×` : '—'],
+      ['Saat Difoto', verif && verif.saatFoto != null
+        ? `<span class="mono">${verif.saatFoto}%</span>` : '—'],
     ];
   };
 
@@ -571,15 +572,16 @@ function dialogBukti(pegawaiId) {
       b.akurasiKeluar, b.dalamRadiusKeluar, b.verifikasiKeluar)
     : null;
 
-  const gambarKe = (src, alt) => src
-    ? `<div class="bingkai"><img src="${src}" alt="${esc(alt)}"></div>`
-    : '<div class="bingkai"><span class="kosong">Tidak tersimpan</span></div>';
-
-  const pasangan = (netral, pose, labelPose) => `
-    <div class="pasangan">
-      <figure>${gambarKe(netral, 'Frame netral')}<figcaption>Sebelum aba-aba</figcaption></figure>
-      <figure>${gambarKe(pose, 'Frame pose')}<figcaption>${esc(labelPose)}</figcaption></figure>
-    </div>`;
+  // Foto pulang ditampilkan berdampingan dengan foto datang. Sejak
+  // verifikasi memakai pemantauan langsung, tidak ada lagi frame netral
+  // yang disimpan — cukup satu foto per tahap.
+  const fotoTahap = (src, label) => `
+    <figure>
+      <div class="bingkai">${src
+      ? `<img src="${src}" alt="${esc(label)}">`
+      : '<span class="kosong">Tidak ada foto</span>'}</div>
+      <figcaption>${esc(label)}</figcaption>
+    </figure>`;
 
   const daftarBaris = (arr) => arr.map(([k, v]) =>
     `<div class="meta-baris"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('');
@@ -610,12 +612,12 @@ function dialogBukti(pegawaiId) {
         : 'Gambar contoh untuk prototipe — bukan foto pegawai sungguhan.'}
             </div>` : ''}
 
-          ${b.fotoAsli && b.verifikasi ? `
-            <div class="tajuk-tahap" style="margin-top:22px">Pembanding datang</div>
-            ${pasangan(b.fotoAwal, b.foto, b.verifikasi.teks || 'Saat aba-aba')}` : ''}
-          ${b.verifikasiKeluar ? `
-            <div class="tajuk-tahap">Pembanding pulang</div>
-            ${pasangan(b.fotoAwalKeluar, b.fotoKeluar, b.verifikasiKeluar.teks || 'Saat aba-aba')}` : ''}
+          ${b.fotoKeluar ? `
+            <div class="tajuk-tahap" style="margin-top:22px">Foto kedua tahap</div>
+            <div class="pasangan">
+              ${fotoTahap(b.foto, 'Datang')}
+              ${fotoTahap(b.fotoKeluar, 'Pulang')}
+            </div>` : ''}
         </div>
         <div>
           <div class="tajuk-tahap">Data pegawai</div>
