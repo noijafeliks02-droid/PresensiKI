@@ -41,6 +41,40 @@ const SHIFT = {
 /** Akurasi GPS terburuk yang masih diterima (meter). */
 const AKURASI_MAKS = 100;
 
+/* ---------- Verifikasi wajah: tantangan gerak acak ----------
+   Foto selfie biasa mudah diakali: pegawai bisa memotret foto lama dari
+   layar HP lain, atau menempelkan foto cetak di depan kamera. Karena itu
+   aplikasi meminta satu gerakan yang diundi SAAT ITU JUGA, lalu memotret
+   dua kali — sebelum dan sesudah aba-aba. Kedua foto dibandingkan: bila
+   nyaris tidak ada perubahan, berarti yang ada di depan kamera tidak
+   bergerak mengikuti perintah dan verifikasinya ditolak.
+
+   Perintahnya diundi setelah tombol ditekan, jadi tidak bisa disiapkan
+   dari rumah. Perintah yang keluar ikut disimpan bersama fotonya, sehingga
+   admin bisa memeriksa sendiri apakah wajah di foto benar melakukannya.
+
+   Tiap tantangan punya ambangnya sendiri, karena besar perubahannya jauh
+   berbeda: menoleh menggeser hampir seluruh wajah, sedangkan membuka mulut
+   hanya mengubah sebagian kecil bingkai. Menyamakan ambangnya akan membuat
+   perintah ekspresi selalu dianggap gagal. */
+const TANTANGAN = [
+  { id: 'kanan', teks: 'Tolehkan kepala ke kanan', ikon: 'chevron', ambang: 8 },
+  { id: 'kiri', teks: 'Tolehkan kepala ke kiri', ikon: 'chevron-left', ambang: 8 },
+  { id: 'atas', teks: 'Tengadahkan kepala ke atas', ikon: 'chevron-up', ambang: 7 },
+  { id: 'dekat', teks: 'Dekatkan wajah ke kamera', ikon: 'target', ambang: 9 },
+  { id: 'mulut', teks: 'Buka mulut lebar-lebar', ikon: 'mulut', ambang: 4 },
+  { id: 'senyum', teks: 'Tersenyum sambil miringkan kepala', ikon: 'senyum', ambang: 5 },
+];
+
+/** Undi satu tantangan. Sengaja Math.random, bukan RNG deterministik —
+    justru tidak boleh bisa ditebak. */
+function pilihTantangan() {
+  return TANTANGAN[Math.floor(Math.random() * TANTANGAN.length)];
+}
+
+/** Ambang cadangan bila sebuah tantangan tidak menetapkan ambangnya sendiri. */
+const AMBANG_GERAK = 6;
+
 const PROFIL = {
   nama: 'Budi Santoso',
   nip: '198504122010011003',
@@ -345,7 +379,12 @@ const DB = {
   /** Bagian yang berubah dan perlu bertahan antar-halaman. */
   simpanan: {
     kantor: { ...KANTOR_DEFAULT },
-    presensi: null,      // { tanggal, jamMasuk, jamKeluar, status, selfie, lat, lng, jarak }
+    // presensi: { tanggal, jamMasuk, jamKeluar, status,
+    //             selfie, selfieAwal, verifikasi, lat, lng, akurasi, jarak,
+    //             selfieKeluar, selfieAwalKeluar, verifikasiKeluar,
+    //             latKeluar, lngKeluar, akurasiKeluar, jarakKeluar }
+    // `verifikasi` = { tantangan, teks, gerak, hasil } — lihat TANTANGAN.
+    presensi: null,
     pengajuan: [],
     masuk: false,        // status login pemilik akun
     modeDemo: false,     // lewati pengecekan lokasi (untuk demo di luar kantor)
@@ -420,6 +459,11 @@ const DB = {
     return true;
   },
 
+  /* Urutan foto yang dikorbankan lebih dulu saat kuota penyimpanan habis.
+     Frame netral paling ringan nilainya (hanya pembanding), lalu foto
+     pulang, dan foto masuk dipertahankan paling akhir. */
+  URUT_LEPAS: ['selfieAwal', 'selfieAwalKeluar', 'selfieKeluar', 'selfie'],
+
   tulis() {
     const coba = () => {
       localStorage.setItem(KUNCI_SIMPAN, JSON.stringify({ versi: 1, data: this.simpanan }));
@@ -433,16 +477,22 @@ const DB = {
     // statusnya tetap utuh sehingga rekap tidak pernah kehilangan data.
     console.warn('Penyimpanan penuh — melepas foto arsip terlama.');
     const arsip = this.simpanan.arsipPresensi;
-    for (let i = arsip.length - 1; i >= 0; i--) {
-      if (!arsip[i].selfie) continue;
-      arsip[i].selfie = null;
-      try { return coba(); } catch { /* masih penuh, lanjut lepas berikutnya */ }
+    for (const bidang of this.URUT_LEPAS) {
+      for (let i = arsip.length - 1; i >= 0; i--) {
+        if (!arsip[i][bidang]) continue;
+        arsip[i][bidang] = null;
+        try { return coba(); } catch { /* masih penuh, lanjut lepas berikutnya */ }
+      }
     }
 
-    // Pilihan terakhir: lepas foto presensi hari ini.
-    if (this.simpanan.presensi && this.simpanan.presensi.selfie) {
-      this.simpanan.presensi.selfie = null;
-      try { return coba(); } catch { /* menyerah */ }
+    // Pilihan terakhir: lepas foto presensi hari ini, urutan sama.
+    const p = this.simpanan.presensi;
+    if (p) {
+      for (const bidang of this.URUT_LEPAS) {
+        if (!p[bidang]) continue;
+        p[bidang] = null;
+        try { return coba(); } catch { /* menyerah */ }
+      }
     }
     console.error('Data tidak dapat disimpan; perubahan hanya berlaku di sesi ini.');
     return false;
@@ -680,6 +730,17 @@ const DB = {
       lat: rekamAku.lat, lng: rekamAku.lng,
       akurasi: rekamAku.akurasi, jarak: rekamAku.jarak,
       dalamRadius: rekamAku.jarak == null ? null : rekamAku.jarak <= this.kantor.radius,
+
+      // Bukti presensi pulang dan hasil tantangan gerak.
+      fotoAwal: rekamAku.selfieAwal || null,
+      verifikasi: rekamAku.verifikasi || null,
+      fotoKeluar: rekamAku.selfieKeluar || null,
+      fotoAwalKeluar: rekamAku.selfieAwalKeluar || null,
+      verifikasiKeluar: rekamAku.verifikasiKeluar || null,
+      latKeluar: rekamAku.latKeluar ?? null, lngKeluar: rekamAku.lngKeluar ?? null,
+      akurasiKeluar: rekamAku.akurasiKeluar ?? null, jarakKeluar: rekamAku.jarakKeluar ?? null,
+      dalamRadiusKeluar: rekamAku.jarakKeluar == null
+        ? null : rekamAku.jarakKeluar <= this.kantor.radius,
     }] : [];
 
     if (tanggal !== hariIni) return dariAku;
@@ -699,6 +760,13 @@ const DB = {
         lat: p.lat, lng: p.lng,
         akurasi: p.akurasi, jarak: p.jarak,
         dalamRadius: p.jamMasuk === '—' ? null : p.dalamRadius,
+        // Pegawai contoh tidak punya rekaman tantangan gerak — hanya akun
+        // yang dipakai demo yang benar-benar melewati verifikasi wajah.
+        fotoAwal: null, verifikasi: null,
+        fotoKeluar: p.jamKeluar === '—' ? null : fotoContoh(p),
+        fotoAwalKeluar: null, verifikasiKeluar: null,
+        latKeluar: null, lngKeluar: null, akurasiKeluar: null,
+        jarakKeluar: null, dalamRadiusKeluar: null,
       }));
 
     // Pemilik akun yang belum check-in tetap ditampilkan agar daftarnya utuh.
@@ -711,6 +779,10 @@ const DB = {
           jamMasuk: '—', jamKeluar: '—', status: 'Belum absen',
           foto: null, fotoAsli: false,
           lat: null, lng: null, akurasi: null, jarak: null, dalamRadius: null,
+          fotoAwal: null, verifikasi: null,
+          fotoKeluar: null, fotoAwalKeluar: null, verifikasiKeluar: null,
+          latKeluar: null, lngKeluar: null, akurasiKeluar: null,
+          jarakKeluar: null, dalamRadiusKeluar: null,
         });
       }
     }

@@ -26,8 +26,8 @@
 <!-- Leaflet: peta asli. Bila offline, gagal dimuat dan aplikasi otomatis
      kembali memakai peta ilustratif (lihat petaTersedia() di peta.js). -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="assets/css/tokens.css?v=20260727j">
-<link rel="stylesheet" href="assets/css/app.css?v=20260727j">
+<link rel="stylesheet" href="assets/css/tokens.css?v=20260727k">
+<link rel="stylesheet" href="assets/css/app.css?v=20260727k">
 </head>
 <body class="stage">
 
@@ -49,11 +49,11 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="assets/js/icons.js?v=20260727j"></script>
-<script src="assets/js/util.js?v=20260727j"></script>
-<script src="assets/js/data.js?v=20260727j"></script>
-<script src="assets/js/peta.js?v=20260727j"></script>
-<script src="assets/js/app.js?v=20260727j"></script>
+<script src="assets/js/icons.js?v=20260727k"></script>
+<script src="assets/js/util.js?v=20260727k"></script>
+<script src="assets/js/data.js?v=20260727k"></script>
+<script src="assets/js/peta.js?v=20260727k"></script>
+<script src="assets/js/app.js?v=20260727k"></script>
 <script>
   /* Pemeriksa versi.
      GitHub Pages menyimpan HTML di cache hingga 10 menit, sehingga halaman
@@ -63,7 +63,7 @@
      halaman dimuat ulang SEKALI dengan alamat baru supaya HTML ikut segar.
      Penjaga sessionStorage mencegah putaran muat-ulang tanpa henti. */
   (function () {
-    var VERSI = '20260727j';
+    var VERSI = '20260727k';
     fetch('versi.json?t=' + Date.now(), { cache: 'no-store' })
       .then(function (r) { return r.json(); })
       .then(function (v) {

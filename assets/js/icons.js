@@ -41,6 +41,12 @@ const ICON_PATHS = {
   edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
   hapus: '<path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6"/><path d="M10 11v6M14 11v6"/>',
   'user-plus': '<circle cx="9" cy="8" r="3.5"/><path d="M3 21c0-3.5 3-5.5 6-5.5s6 2 6 5.5"/><path d="M18 8v6M15 11h6"/>',
+
+  /* Ikon tantangan verifikasi wajah */
+  'chevron-up': '<path d="m6 15 6-6 6 6"/>',
+  senyum: '<circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01M15 9h.01"/>',
+  mulut: '<circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="14.5" rx="3.5" ry="2.5"/><path d="M9 9h.01M15 9h.01"/>',
+  perisai: '<path d="M12 3l7 3v6c0 4.5-3 7.8-7 9-4-1.2-7-4.5-7-9V6Z"/><path d="m9 12 2 2 4-4"/>',
 };
 
 /**

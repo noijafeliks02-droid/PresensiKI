@@ -68,7 +68,7 @@ function stripStatistik(kartu, kelasExtra = '') {
 const HALAMAN = {
   dashboard: { judul: 'Dashboard Kehadiran', sub: 'Ringkasan presensi pegawai hari ini', ikon: 'grid' },
   kehadiran: { judul: 'Kehadiran', sub: 'Daftar presensi seluruh pegawai hari ini', ikon: 'check-clipboard' },
-  bukti: { judul: 'Bukti Absen', sub: 'Foto verifikasi wajah beserta data lokasi saat check-in', ikon: 'camera' },
+  bukti: { judul: 'Bukti Absen', sub: 'Foto verifikasi wajah datang & pulang beserta hasil tantangan geraknya', ikon: 'camera' },
   pegawai: { judul: 'Pegawai', sub: 'Data induk pegawai dan unit kerja', ikon: 'users' },
   cuti: { judul: 'Izin & Cuti', sub: 'Persetujuan pengajuan izin, cuti, dan sakit', ikon: 'calendar' },
   lokasi: { judul: 'Lokasi Kantor', sub: 'Titik koordinat dan radius geofencing', ikon: 'pin' },
@@ -486,6 +486,20 @@ function viewBukti() {
   </div>`;
 }
 
+/** Label hasil tantangan gerak pada verifikasi wajah. */
+function labelVerifikasi(v) {
+  if (!v) return { teks: 'Tidak ada rekaman', chip: 'chip-grey' };
+  if (v.hasil === 'lolos') return { teks: 'Gerak terverifikasi', chip: 'chip-green' };
+  if (v.hasil === 'lemah') return { teks: 'Perlu diperiksa', chip: 'chip-red' };
+  return { teks: 'Tanpa kamera', chip: 'chip-grey' };
+}
+
+/** Ada tahap yang lolos tanpa gerakan meyakinkan? */
+function perluDiperiksa(b) {
+  return (b.verifikasi && b.verifikasi.hasil === 'lemah')
+    || (b.verifikasiKeluar && b.verifikasiKeluar.hasil === 'lemah');
+}
+
 function kartuBukti(b) {
   const w = warnaStatus(b.status);
   return `
@@ -502,6 +516,8 @@ function kartuBukti(b) {
            </div>`}
       ${b.jamMasuk !== '—' ? `<span class="bukti-jam">${jamTampil(b.jamMasuk)}</span>` : ''}
       ${b.dalamRadius === false ? '<span class="bukti-luar">LUAR</span>' : ''}
+      ${perluDiperiksa(b) ? '<span class="bukti-curiga">PERIKSA</span>' : ''}
+      ${b.fotoKeluar ? '<span class="bukti-pulang">+ PULANG</span>' : ''}
     </div>
     <div class="bukti-info">
       <div class="nm">${esc(b.nama)}</div>
@@ -517,24 +533,56 @@ function dialogBukti(pegawaiId) {
   if (!b) { toast('Bukti tidak ditemukan.', 'err'); return; }
 
   const w = warnaStatus(b.status);
-  const koordinat = (b.lat != null && b.lng != null)
-    ? `${b.lat.toFixed(6)}, ${b.lng.toFixed(6)}` : '—';
-  const baris = [
+  const koor = (la, ln) => (la != null && ln != null)
+    ? `${la.toFixed(6)}, ${ln.toFixed(6)}` : '—';
+
+  /** Baris-baris metadata untuk satu tahap (datang atau pulang). */
+  const barisTahap = (jam, lat, lng, jarak, akurasi, dalam, verif) => {
+    const lv = labelVerifikasi(verif);
+    return [
+      ['Jam', `<span class="mono">${jamTampil(jam)}</span>`],
+      ['Koordinat', `<span class="mono">${esc(koor(lat, lng))}</span>`],
+      ['Jarak ke Kantor', jarak != null ? `<span class="mono">${jarak} m</span>` : '—'],
+      ['Akurasi GPS', akurasi != null ? `<span class="mono">± ${Math.round(akurasi)} m</span>` : '—'],
+      ['Posisi', dalam == null ? '—'
+        : (dalam
+          ? '<span class="chip chip-green">Dalam radius</span>'
+          : '<span class="chip chip-red">Di luar radius</span>')],
+      ['Perintah Gerak', verif && verif.teks ? esc(verif.teks) : '—'],
+      ['Hasil Verifikasi', `<span class="chip ${lv.chip}">${lv.teks}</span>`],
+      ['Perubahan Wajah', verif && verif.gerak != null
+        ? `<span class="mono">${verif.gerak}%</span>${verif.ambang != null
+          ? ` <span style="color:var(--mut);font-weight:600">(min ${verif.ambang}%)</span>` : ''}`
+        : '—'],
+      ['Percobaan', verif && verif.percobaan ? `${verif.percobaan}×` : '—'],
+    ];
+  };
+
+  const barisUmum = [
     ['NIP', esc(b.nip)],
     ['Unit Kerja', esc(b.unit)],
     ['Jabatan', esc(b.jabatan)],
     ['Tanggal', esc(fmtTanggalPanjang(new Date(b.tanggal + 'T00:00:00')))],
-    ['Jam Masuk', `<span class="mono">${jamTampil(b.jamMasuk)}</span>`],
-    ['Jam Keluar', `<span class="mono">${jamTampil(b.jamKeluar)}</span>`],
     ['Status', `<span class="chip ${w.chip}">${esc(b.status)}</span>`],
-    ['Koordinat', `<span class="mono">${esc(koordinat)}</span>`],
-    ['Jarak ke Kantor', b.jarak != null ? `<span class="mono">${b.jarak} m</span>` : '—'],
-    ['Akurasi GPS', b.akurasi != null ? `<span class="mono">± ${Math.round(b.akurasi)} m</span>` : '—'],
-    ['Posisi', b.dalamRadius == null ? '—'
-      : (b.dalamRadius
-        ? '<span class="chip chip-green">Dalam radius</span>'
-        : '<span class="chip chip-red">Di luar radius</span>')],
   ];
+  const barisDatang = barisTahap(b.jamMasuk, b.lat, b.lng, b.jarak, b.akurasi, b.dalamRadius, b.verifikasi);
+  const barisPulang = b.jamKeluar !== '—'
+    ? barisTahap(b.jamKeluar, b.latKeluar, b.lngKeluar, b.jarakKeluar,
+      b.akurasiKeluar, b.dalamRadiusKeluar, b.verifikasiKeluar)
+    : null;
+
+  const gambarKe = (src, alt) => src
+    ? `<div class="bingkai"><img src="${src}" alt="${esc(alt)}"></div>`
+    : '<div class="bingkai"><span class="kosong">Tidak tersimpan</span></div>';
+
+  const pasangan = (netral, pose, labelPose) => `
+    <div class="pasangan">
+      <figure>${gambarKe(netral, 'Frame netral')}<figcaption>Sebelum aba-aba</figcaption></figure>
+      <figure>${gambarKe(pose, 'Frame pose')}<figcaption>${esc(labelPose)}</figcaption></figure>
+    </div>`;
+
+  const daftarBaris = (arr) => arr.map(([k, v]) =>
+    `<div class="meta-baris"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('');
 
   bukaModal(`
     <div class="modal-head">
@@ -561,10 +609,23 @@ function dialogBukti(pegawaiId) {
         ? 'Foto asli hasil verifikasi wajah dari aplikasi pegawai.'
         : 'Gambar contoh untuk prototipe — bukan foto pegawai sungguhan.'}
             </div>` : ''}
+
+          ${b.fotoAsli && b.verifikasi ? `
+            <div class="tajuk-tahap" style="margin-top:22px">Pembanding datang</div>
+            ${pasangan(b.fotoAwal, b.foto, b.verifikasi.teks || 'Saat aba-aba')}` : ''}
+          ${b.verifikasiKeluar ? `
+            <div class="tajuk-tahap">Pembanding pulang</div>
+            ${pasangan(b.fotoAwalKeluar, b.fotoKeluar, b.verifikasiKeluar.teks || 'Saat aba-aba')}` : ''}
         </div>
         <div>
-          ${baris.map(([k, v]) => `
-            <div class="meta-baris"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('')}
+          <div class="tajuk-tahap">Data pegawai</div>
+          ${daftarBaris(barisUmum)}
+          <div class="tajuk-tahap">Presensi datang</div>
+          ${daftarBaris(barisDatang)}
+          <div class="tajuk-tahap">Presensi pulang</div>
+          ${barisPulang
+      ? daftarBaris(barisPulang)
+      : '<div class="meta-baris"><span class="k">Status</span><span class="v">Belum absen pulang</span></div>'}
         </div>
       </div>
     </div>
@@ -1504,7 +1565,9 @@ const AKSI = {
     const d = daftarBuktiTersaring();
     exportCSV(`bukti-absen-${V.buktiTanggal}`,
       ['NIP', 'Nama', 'Unit Kerja', 'Tanggal', 'Jam Masuk', 'Jam Keluar', 'Status',
-        'Latitude', 'Longitude', 'Jarak (m)', 'Akurasi (m)', 'Dalam Radius', 'Bukti Foto'],
+        'Latitude', 'Longitude', 'Jarak (m)', 'Akurasi (m)', 'Dalam Radius', 'Bukti Foto',
+        'Perintah Gerak Datang', 'Verifikasi Datang', 'Perubahan Datang (%)',
+        'Bukti Foto Pulang', 'Perintah Gerak Pulang', 'Verifikasi Pulang', 'Perubahan Pulang (%)'],
       d.map(b => [
         b.nip, b.nama, b.unit, b.tanggal, b.jamMasuk, b.jamKeluar, b.status,
         b.lat != null ? b.lat.toFixed(6) : '—',
@@ -1513,6 +1576,13 @@ const AKSI = {
         b.akurasi != null ? Math.round(b.akurasi) : '—',
         b.dalamRadius == null ? '—' : (b.dalamRadius ? 'Ya' : 'Tidak'),
         b.foto ? (b.fotoAsli ? 'Ada (asli)' : 'Ada (contoh)') : 'Tidak ada',
+        b.verifikasi ? b.verifikasi.teks : '—',
+        labelVerifikasi(b.verifikasi).teks,
+        b.verifikasi && b.verifikasi.gerak != null ? b.verifikasi.gerak : '—',
+        b.fotoKeluar ? 'Ada' : 'Tidak ada',
+        b.verifikasiKeluar ? b.verifikasiKeluar.teks : '—',
+        b.verifikasiKeluar ? labelVerifikasi(b.verifikasiKeluar).teks : '—',
+        b.verifikasiKeluar && b.verifikasiKeluar.gerak != null ? b.verifikasiKeluar.gerak : '—',
       ]));
     toast(`${d.length} baris bukti diunduh sebagai CSV.`);
   },

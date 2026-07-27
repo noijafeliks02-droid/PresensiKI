@@ -385,7 +385,34 @@
 }
 .viewport .flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
 .viewport .flash.on { animation: flash .5s ease both; }
+
+/* Pita aba-aba tantangan gerak. Diletakkan di tepi atas, bukan menutup
+   seluruh bingkai, supaya pegawai tetap melihat wajahnya sendiri sambil
+   mengikuti perintah. */
+.viewport .aba {
+  position: absolute; left: 0; right: 0; top: 0;
+  background: var(--gold); color: var(--onGold);
+  padding: 11px 13px; display: flex; align-items: center; gap: 9px;
+  font-size: 12.5px; font-weight: 800; line-height: 1.25; text-align: left;
+  pointer-events: none;
+}
+.viewport .aba-ikon { display: flex; flex: none; }
+.viewport .hitung {
+  position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%);
+  width: 54px; height: 54px; border-radius: 50%;
+  background: rgba(12, 22, 32, .74); color: #fff;
+  font-family: var(--font-display); font-weight: 400; font-size: 26px;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+}
+.viewport .hitung.denyut { animation: denyutHitung .5s ease both; }
+@keyframes denyutHitung {
+  from { transform: translateX(-50%) scale(1.28); opacity: .35; }
+  to   { transform: translateX(-50%) scale(1); opacity: 1; }
+}
+
 .selfie-tengah .t { font-size: 15.5px; font-weight: 800; color: #fff; margin-top: 30px; }
+.selfie-tengah .t.gagal { color: var(--danger); }
 .selfie-tengah .s { font-size: 13px; font-weight: 500; color: rgba(255, 255, 255, .5); margin-top: 8px; }
 .shutter-wrap { display: flex; justify-content: center; padding-bottom: 54px; }
 .shutter {

@@ -21,6 +21,12 @@ const S = {
   peta: null,
   form: { jenis: 'Izin', mulai: '', selesai: '', alasan: '', lampiran: '' },
   lihatSandi: false,
+
+  /** Tahap presensi yang sedang dijalani: 'masuk' (datang) atau 'keluar' (pulang). */
+  mode: 'masuk',
+
+  /** Keadaan tantangan verifikasi wajah pada layar Selfie. */
+  verif: { sibuk: false, ulang: 0, tantangan: null },
 };
 
 const $layar = document.getElementById('layar');
@@ -214,8 +220,9 @@ function layarHome() {
            <div class="judul">${p.jamKeluar ? 'Presensi hari ini selesai' : 'Sudah check-in'}</div>
            <div class="sub">Masuk pukul ${jamTampil(p.jamMasuk)}${p.jamKeluar ? ` · pulang ${jamTampil(p.jamKeluar)}` : ''}</div>
          </div>
-         ${p.jamKeluar ? '' : '<button class="btn-pil-bahaya" data-aksi="checkout">Pulang</button>'}
-       </div>`
+         ${p.jamKeluar ? '' : '<button class="btn-pil-bahaya" data-aksi="mulaiCheckout">Pulang</button>'}
+       </div>
+       ${p.jamKeluar ? '' : '<div class="ket-izin">Presensi pulang juga memerlukan verifikasi wajah.</div>'}`
     : `<button class="btn-gold" style="margin-top:20px" data-aksi="mulaiCheckin" ${izin.ok ? '' : 'disabled'}>
          ${icon('check-clipboard', 20, 'currentColor', 2.6)} Check-in sekarang
        </button>
@@ -291,10 +298,17 @@ function petaIlustratif() {
     </div>`;
 }
 
+/** Apakah tahap presensi yang sedang dijalani sudah selesai? */
+function sudahTahapIni() {
+  const p = DB.presensi;
+  return S.mode === 'keluar' ? !!(p && p.jamKeluar) : !!p;
+}
+
 function layarPeta() {
   const k = DB.kantor;
   const izin = bolehAbsen();
-  const sudah = !!DB.presensi;
+  const sudah = sudahTahapIni();
+  const pulang = S.mode === 'keluar';
   const st = statusLokasi();
   const adaPeta = petaTersedia();
 
@@ -309,12 +323,12 @@ function layarPeta() {
       <button class="btn-kembali" data-aksi="home" aria-label="Kembali">
         ${icon('chevron-left', 20, '#fff', 2.6)}
       </button>
-      <div class="judul">Verifikasi lokasi</div>
+      <div class="judul">Verifikasi lokasi${pulang ? ' — pulang' : ''}</div>
     </div>
 
     <div class="peta-sheet">
       <div class="handle"></div>
-      <div class="eyebrow">Titik presensi</div>
+      <div class="eyebrow">${pulang ? 'Presensi pulang' : 'Titik presensi'}</div>
       <div class="nama">${esc(k.nama)}</div>
       <div class="alamat">${esc(k.alamat)}</div>
 
@@ -325,9 +339,9 @@ function layarPeta() {
 
       <div id="aksiPeta">
         ${sudah
-      ? '<div class="catatan-privasi" style="margin-top:22px">Anda sudah melakukan presensi hari ini.</div>'
+      ? `<div class="catatan-privasi" style="margin-top:22px">Anda sudah melakukan presensi ${pulang ? 'pulang' : 'masuk'} hari ini.</div>`
       : `<button class="btn-gold" style="margin-top:20px" data-aksi="lanjutSelfie" ${izin.ok ? '' : 'disabled'}>
-               ${icon('camera', 20, 'currentColor', 2.4)} Lanjut ambil selfie
+               ${icon('camera', 20, 'currentColor', 2.4)} Lanjut verifikasi wajah
              </button>
              ${izin.ok ? '' : `<div class="ket-izin">${esc(izin.alasan)}</div>`}`}
       </div>
@@ -373,7 +387,7 @@ function perbaruiLayarPeta() {
   }
 
   const $a = document.getElementById('aksiPeta');
-  if ($a && !DB.presensi) {
+  if ($a && !sudahTahapIni()) {
     const izin = bolehAbsen();
     const tombol = $a.querySelector('button');
     if (tombol) tombol.disabled = !izin.ok;
@@ -395,26 +409,38 @@ function perbaruiLayarPeta() {
    ============================================================ */
 
 function layarSelfie() {
+  const pulang = S.mode === 'keluar';
   return `
   <div class="selfie">
     <div class="selfie-kepala">
       <button class="btn-kembali" data-aksi="peta" aria-label="Kembali">
         ${icon('chevron-left', 20, '#fff', 2.6)}
       </button>
-      <div class="judul">Verifikasi wajah</div>
+      <div class="judul">Verifikasi wajah${pulang ? ' — pulang' : ''}</div>
     </div>
     <div class="selfie-tengah">
       <div class="viewport" id="viewport">
         <video id="kamera" autoplay playsinline muted></video>
         <span class="ph" id="phKamera">menyalakan kamera…</span>
         <div class="guide"></div>
+
+        <!-- Pita aba-aba: baru terisi saat tombol ditekan, karena
+             perintahnya memang diundi pada detik itu. -->
+        <div class="aba" id="aba" hidden>
+          <span class="aba-ikon" id="abaIkon"></span>
+          <span class="aba-teks" id="abaTeks"></span>
+        </div>
+        <div class="hitung" id="hitung" hidden></div>
+
         <div class="flash" id="flash"></div>
       </div>
-      <div class="t">Posisikan wajah di dalam bingkai</div>
-      <div class="s">Pastikan pencahayaan cukup dan lepas masker.</div>
+      <div class="t" id="verifJudul">Posisikan wajah di dalam bingkai</div>
+      <div class="s" id="verifKet">
+        Tekan tombol, lalu ikuti perintah gerak yang muncul sebelum foto diambil.
+      </div>
     </div>
     <div class="shutter-wrap">
-      <button class="shutter" data-aksi="jepret" aria-label="Ambil foto"><span></span></button>
+      <button class="shutter" data-aksi="jepret" aria-label="Mulai verifikasi wajah"><span></span></button>
     </div>
   </div>`;
 }
@@ -448,10 +474,9 @@ function matikanKamera() {
 }
 
 /** Ambil frame dari video dan simpan sebagai JPEG kecil (~40 KB). */
-function tangkapFoto() {
+function tangkapFoto(L = 320, T = 400, mutu = 0.7) {
   const video = document.getElementById('kamera');
   if (!video || !video.videoWidth) return null;
-  const L = 320, T = 400;
   const c = document.createElement('canvas');
   c.width = L; c.height = T;
   const ctx = c.getContext('2d');
@@ -460,16 +485,189 @@ function tangkapFoto() {
   const rasio = Math.max(L / video.videoWidth, T / video.videoHeight);
   const w = video.videoWidth * rasio, h = video.videoHeight * rasio;
   ctx.drawImage(video, (L - w) / 2, (T - h) / 2, w, h);
-  return c.toDataURL('image/jpeg', 0.7);
+  return c.toDataURL('image/jpeg', mutu);
+}
+
+/* ============================================================
+   Tantangan gerak — pengaman verifikasi wajah
+   ------------------------------------------------------------
+   Urutannya: tombol ditekan → satu frame netral diambil diam-diam →
+   perintah gerak diundi dan ditampilkan → hitung mundur → frame kedua
+   diambil. Kedua frame dibandingkan piksel demi piksel; bila wajahnya
+   praktis tidak berubah, berarti yang ada di depan kamera tidak mengikuti
+   perintah — foto cetak atau layar HP yang didiamkan akan tertahan di sini.
+
+   Perintahnya baru diundi setelah tombol ditekan, jadi tidak bisa
+   disiapkan sebelumnya. Kedua frame dan bunyi perintahnya ikut tersimpan,
+   sehingga admin dapat memeriksa sendiri apakah gerakannya benar dilakukan.
+   ============================================================ */
+
+const VERIF = {
+  LEBAR: 64, TINGGI: 80,   // ukuran contoh piksel yang dibandingkan
+  AMBANG_PIKSEL: 26,       // selisih kecerahan yang dihitung sebagai berubah
+  ABA_ABA: 3,              // detik hitung mundur
+  MAKS_ULANG: 3,           // setelah ini presensi tetap diterima, tetapi ditandai
+};
+
+/** Contoh piksel abu-abu dari bagian tengah frame — kira-kira area wajah. */
+function contohPiksel() {
+  const video = document.getElementById('kamera');
+  if (!video || !video.videoWidth) return null;
+  const L = VERIF.LEBAR, T = VERIF.TINGGI;
+  const c = document.createElement('canvas');
+  c.width = L; c.height = T;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+
+  const rasio = Math.max(L / video.videoWidth, T / video.videoHeight);
+  const w = video.videoWidth * rasio, h = video.videoHeight * rasio;
+  ctx.drawImage(video, (L - w) / 2, (T - h) / 2, w, h);
+
+  const d = ctx.getImageData(0, 0, L, T).data;
+  const abu = new Uint8ClampedArray(L * T);
+  for (let i = 0, j = 0; i < d.length; i += 4, j++) {
+    abu[j] = (d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000;
+  }
+  return abu;
+}
+
+/** Persentase piksel yang berubah antara dua contoh, satu angka desimal. */
+function bedaPersen(a, b) {
+  if (!a || !b || a.length !== b.length) return 0;
+  let n = 0;
+  for (let i = 0; i < a.length; i++) {
+    if (Math.abs(a[i] - b[i]) > VERIF.AMBANG_PIKSEL) n++;
+  }
+  return Math.round((n / a.length) * 1000) / 10;
+}
+
+/** Tulis teks status di bawah bingkai kamera. */
+function statusVerif(judul, ket, kelas = '') {
+  const j = document.getElementById('verifJudul');
+  const k = document.getElementById('verifKet');
+  if (j) { j.textContent = judul; j.className = 't ' + kelas; }
+  if (k) k.textContent = ket;
+}
+
+function tampilAbaAba(t) {
+  const aba = document.getElementById('aba');
+  if (!aba) return;
+  document.getElementById('abaIkon').innerHTML = icon(t.ikon, 19, 'currentColor', 2.6);
+  document.getElementById('abaTeks').textContent = t.teks;
+  aba.hidden = false;
+}
+
+function sembunyikanAbaAba() {
+  const aba = document.getElementById('aba');
+  const h = document.getElementById('hitung');
+  if (aba) aba.hidden = true;
+  if (h) h.hidden = true;
+}
+
+function tulisHitung(n) {
+  const h = document.getElementById('hitung');
+  if (!h) return;
+  h.hidden = false;
+  h.textContent = n;
+  h.classList.remove('denyut');
+  void h.offsetWidth;
+  h.classList.add('denyut');
+}
+
+/** Jalankan satu putaran tantangan, dari tombol ditekan sampai foto tersimpan. */
+function mulaiVerifikasi(tombol) {
+  if (S.verif.sibuk) return;
+  S.verif.sibuk = true;
+  tombol.disabled = true;
+
+  const t = pilihTantangan();
+  S.verif.tantangan = t;
+
+  // Frame netral diambil lebih dulu, sebelum perintahnya terlihat — jadi
+  // pegawai belum sempat bergerak. Inilah pembandingnya nanti.
+  const pikselAwal = contohPiksel();
+  const fotoAwal = tangkapFoto(200, 250, 0.5);
+
+  tampilAbaAba(t);
+  statusVerif('Ikuti perintah di atas', 'Tahan posisinya sampai hitungan selesai.');
+
+  let sisa = VERIF.ABA_ABA;
+  tulisHitung(sisa);
+  const tik = setInterval(() => {
+    sisa--;
+    if (sisa > 0) { tulisHitung(sisa); return; }
+    clearInterval(tik);
+    S.verif.tik = null;
+    tuntaskanVerifikasi(tombol, t, pikselAwal, fotoAwal);
+  }, 1000);
+  S.verif.tik = tik;
+}
+
+function tuntaskanVerifikasi(tombol, t, pikselAwal, fotoAwal) {
+  const flash = document.getElementById('flash');
+  if (flash) { flash.classList.remove('on'); void flash.offsetWidth; flash.classList.add('on'); }
+
+  const pikselPose = contohPiksel();
+  const gerak = bedaPersen(pikselAwal, pikselPose);
+  const foto = tangkapFoto();
+  sembunyikanAbaAba();
+
+  // Bila salah satu frame tidak terambil — kamera ditolak, atau videonya
+  // belum sempat berjalan — tidak ada yang bisa dibandingkan. Alur tetap
+  // diteruskan supaya prototipe bisa didemokan di komputer tanpa webcam,
+  // tetapi hasilnya ditandai agar admin tahu bedanya.
+  const bisaUkur = !!(pikselAwal && pikselPose);
+  const ambang = t.ambang ?? AMBANG_GERAK;
+  const kurang = bisaUkur && gerak < ambang;
+
+  if (kurang && S.verif.ulang < VERIF.MAKS_ULANG - 1) {
+    S.verif.ulang++;
+    S.verif.sibuk = false;
+    tombol.disabled = false;
+    statusVerif('Gerakan tidak terdeteksi',
+      `Wajah Anda nyaris tidak berubah. Coba lagi — percobaan ${S.verif.ulang + 1} dari ${VERIF.MAKS_ULANG}.`,
+      'gagal');
+    return;
+  }
+
+  const hasil = !bisaUkur ? 'tanpaKamera' : (kurang ? 'lemah' : 'lolos');
+  const verif = {
+    tantangan: t.id,
+    teks: t.teks,
+    gerak,
+    ambang,
+    hasil,
+    percobaan: S.verif.ulang + 1,
+  };
+
+  setTimeout(() => {
+    if (S.mode === 'keluar') simpanCheckOut(foto, fotoAwal, verif);
+    else simpanCheckIn(foto, fotoAwal, verif);
+    matikanKamera();
+    pindah('sukses');
+  }, 420);
 }
 
 /* ============================================================
    Layar 5 — Berhasil
    ============================================================ */
 
+/** Label hasil tantangan gerak, dipakai di layar Berhasil dan panel admin. */
+function labelVerifikasi(v) {
+  if (!v) return { teks: 'Tanpa foto', chip: 'chip-grey' };
+  if (v.hasil === 'lolos') return { teks: 'Gerak terverifikasi', chip: 'chip-green' };
+  if (v.hasil === 'lemah') return { teks: 'Perlu diperiksa', chip: 'chip-red' };
+  return { teks: 'Tanpa kamera', chip: 'chip-grey' };
+}
+
 function layarSukses() {
   const p = DB.presensi || {};
+  const pulang = S.mode === 'keluar';
   const w = warnaStatus(p.status || 'Tepat waktu');
+
+  const foto = pulang ? p.selfieKeluar : p.selfie;
+  const verif = pulang ? p.verifikasiKeluar : p.verifikasi;
+  const lv = labelVerifikasi(foto ? verif : null);
+
   return `
   <div class="sukses">
     <div class="sukses-navy"></div>
@@ -482,13 +680,13 @@ function layarSukses() {
           </svg>
         </div>
       </div>
-      <h2>Presensi tercatat</h2>
+      <h2>${pulang ? 'Presensi pulang tercatat' : 'Presensi tercatat'}</h2>
       <div class="sub">Kehadiran Anda sudah tersimpan.</div>
 
       <div class="sukses-baris">
         <div class="baris">
-          <span class="kiri">Jam masuk</span>
-          <span class="nilai-display">${jamTampil(p.jamMasuk || '—')}</span>
+          <span class="kiri">${pulang ? 'Jam pulang' : 'Jam masuk'}</span>
+          <span class="nilai-display">${jamTampil((pulang ? p.jamKeluar : p.jamMasuk) || '—')}</span>
         </div>
         <div class="baris">
           <span class="kiri">Status</span>
@@ -501,10 +699,15 @@ function layarSukses() {
         <div class="baris">
           <span class="kiri">Verifikasi wajah</span>
           <span style="display:flex;align-items:center;gap:10px">
-            ${p.selfie ? `<img class="thumb-selfie" src="${p.selfie}" alt="Foto verifikasi">` : ''}
-            <span class="kanan">${p.selfie ? 'Terverifikasi' : 'Tanpa foto'}</span>
+            ${foto ? `<img class="thumb-selfie" src="${foto}" alt="Foto verifikasi">` : ''}
+            <span class="chip ${lv.chip}">${lv.teks}</span>
           </span>
         </div>
+        ${verif && verif.teks ? `
+        <div class="baris">
+          <span class="kiri">Perintah gerak</span>
+          <span class="kanan">${esc(verif.teks)}</span>
+        </div>` : ''}
       </div>
 
       <button class="btn-gold" data-aksi="selesaiCheckin">Selesai</button>
@@ -872,7 +1075,13 @@ if (document.fonts && document.fonts.ready) {
 }
 
 function pindah(layar) {
-  if (S.layar === 'selfie' && layar !== 'selfie') matikanKamera();
+  if (S.layar === 'selfie' && layar !== 'selfie') {
+    // Hitung mundur yang masih berjalan harus dihentikan, kalau tidak ia
+    // akan memotret layar yang sudah ditinggalkan.
+    if (S.verif.tik) { clearInterval(S.verif.tik); S.verif.tik = null; }
+    S.verif.sibuk = false;
+    matikanKamera();
+  }
   S.layar = layar;
   render();
   $layar.scrollTop = 0;
@@ -883,7 +1092,9 @@ function pindah(layar) {
    ============================================================ */
 
 const AKSI = {
-  home: () => pindah('home'),
+  // Kembali ke beranda selalu mengakhiri alur presensi yang sedang berjalan,
+  // supaya tahap 'keluar' tidak tertinggal aktif di layar berikutnya.
+  home: () => { S.mode = 'masuk'; pindah('home'); },
   peta: () => pindah('peta'),
   riwayat: () => pindah('riwayat'),
   profil: () => pindah('profil'),
@@ -902,40 +1113,35 @@ const AKSI = {
   mulaiCheckin: () => {
     const izin = bolehAbsen();
     if (!izin.ok) { toast(izin.alasan, 'err'); return; }
+    S.mode = 'masuk';
+    pindah('peta');
+  },
+
+  /* Presensi pulang menempuh jalur yang sama dengan presensi masuk:
+     lokasi diperiksa, lalu wajah diverifikasi dengan tantangan gerak. */
+  mulaiCheckout: () => {
+    const p = DB.presensi;
+    if (!p || p.jamKeluar) return;
+    const izin = bolehAbsen();
+    if (!izin.ok) { toast(izin.alasan, 'err'); return; }
+    S.mode = 'keluar';
     pindah('peta');
   },
 
   lanjutSelfie: () => {
     const izin = bolehAbsen();
     if (!izin.ok) { toast(izin.alasan, 'err'); return; }
+    S.verif = { sibuk: false, ulang: 0, tantangan: null, tik: null };
     pindah('selfie');
   },
 
-  jepret: (el) => {
-    el.disabled = true;
-    const flash = document.getElementById('flash');
-    if (flash) { flash.classList.remove('on'); void flash.offsetWidth; flash.classList.add('on'); }
-    const foto = tangkapFoto();
-    // Tunggu animasi kilat selesai sebelum berpindah.
-    setTimeout(() => {
-      simpanCheckIn(foto);
-      matikanKamera();
-      pindah('sukses');
-    }, 620);
-  },
+  jepret: (el) => mulaiVerifikasi(el),
 
   selesaiCheckin: () => {
+    const pulang = S.mode === 'keluar';
+    S.mode = 'masuk';
     pindah('home');
-    toast('Presensi masuk tersimpan.');
-  },
-
-  checkout: () => {
-    const p = DB.presensi;
-    if (!p || p.jamKeluar) return;
-    p.jamKeluar = fmtJam(new Date());
-    DB.tulis();
-    render();
-    toast(`Presensi pulang tercatat pukul ${jamTampil(p.jamKeluar)}.`);
+    toast(pulang ? 'Presensi pulang tersimpan.' : 'Presensi masuk tersimpan.');
   },
 
   bulanMundur: () => {
@@ -979,8 +1185,8 @@ const AKSI = {
   },
 };
 
-/** Catat check-in ke penyimpanan. */
-function simpanCheckIn(foto) {
+/** Catat presensi masuk ke penyimpanan. */
+function simpanCheckIn(foto, fotoAwal, verif) {
   const now = new Date();
   const jam = fmtJam(now);
   DB.simpanan.presensi = {
@@ -989,11 +1195,28 @@ function simpanCheckIn(foto) {
     jamKeluar: null,
     status: jam <= SHIFT.batasTerlambat ? 'Tepat waktu' : 'Terlambat',
     selfie: foto,
+    selfieAwal: fotoAwal,
+    verifikasi: verif,
     lat: S.gps.lat,
     lng: S.gps.lng,
     akurasi: S.gps.akurasi,
     jarak: S.gps.status === 'ok' ? S.gps.jarak : null,
   };
+  DB.tulis();
+}
+
+/** Catat presensi pulang — foto, lokasi, dan hasil verifikasinya sendiri. */
+function simpanCheckOut(foto, fotoAwal, verif) {
+  const p = DB.simpanan.presensi;
+  if (!p || p.jamKeluar) return;
+  p.jamKeluar = fmtJam(new Date());
+  p.selfieKeluar = foto;
+  p.selfieAwalKeluar = fotoAwal;
+  p.verifikasiKeluar = verif;
+  p.latKeluar = S.gps.lat;
+  p.lngKeluar = S.gps.lng;
+  p.akurasiKeluar = S.gps.akurasi;
+  p.jarakKeluar = S.gps.status === 'ok' ? S.gps.jarak : null;
   DB.tulis();
 }
 
