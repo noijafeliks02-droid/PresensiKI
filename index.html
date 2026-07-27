@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0E2A47">
+<title>PresensiKu — Sistem Presensi Online</title>
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caprasimo&family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script>
+  try {
+    if (localStorage.getItem('presensiku.tema') === 'gelap') {
+      document.documentElement.dataset.tema = 'gelap';
+    }
+  } catch { /* localStorage diblokir — biarkan mode terang */ }
+</script>
+<link rel="stylesheet" href="assets/css/tokens.css">
+<style>
+  body {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    padding: 40px 26px; background: var(--paper);
+  }
+  .wrap { width: 100%; max-width: 760px; }
+  .kepala { margin-bottom: 44px; }
+  .mark { width: 72px; height: 72px; border-radius: 26px; display: block; }
+  h1 {
+    font-family: var(--font-display); font-weight: 400;
+    font-size: 40px; color: var(--ink); margin: 24px 0 0; line-height: 1;
+  }
+  .tag { font-size: 14px; color: var(--mut); font-weight: 600; line-height: 1.6; max-width: 34ch; }
+  .pilihan { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .kartu {
+    display: block; text-decoration: none;
+    border: 1.5px solid var(--line); border-radius: var(--r-kartu); padding: 26px;
+    transition: border-color .14s ease;
+  }
+  .kartu:hover { border-color: var(--gold); }
+  .kartu .ic {
+    width: 52px; height: 52px; border-radius: 50%; background: var(--goldTint);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .kartu h2 { font-size: 16px; font-weight: 800; color: var(--ink); margin: 20px 0 0; }
+  .kartu p { font-size: 13px; color: var(--mut); font-weight: 600; line-height: 1.6; margin: 10px 0 0; }
+  .kartu .go {
+    display: flex; align-items: center; gap: 8px; margin-top: 20px;
+    font-size: 13px; font-weight: 800; color: var(--goldInk);
+  }
+  .catatan {
+    margin-top: 36px; padding-top: 24px; border-top: 1px solid var(--line);
+    font-size: 12.5px; line-height: 1.7; color: var(--mut); font-weight: 600;
+  }
+  .catatan code {
+    background: var(--chipNetral); border-radius: 999px;
+    padding: 3px 10px; font-size: 12px; color: var(--ink); font-weight: 700;
+  }
+  @media (max-width: 620px) { .pilihan { grid-template-columns: 1fr; } h1 { font-size: 32px; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="kepala">
+    <div class="eyebrow">Kementerian Pekerjaan Umum</div>
+    <img class="mark" src="assets/icon.svg" alt="" style="margin-top:18px">
+    <h1>PresensiKu</h1>
+    <hr class="garis-emas">
+    <p class="tag">Presensi berbasis lokasi untuk pegawai Kementerian Pekerjaan Umum.</p>
+  </div>
+
+  <div class="pilihan">
+    <a class="kartu" href="pegawai.html">
+      <div class="ic" id="ic1"></div>
+      <h2>Aplikasi pegawai</h2>
+      <p>Check-in dan pulang dengan verifikasi lokasi serta selfie, lihat riwayat presensi, dan ajukan izin atau cuti.</p>
+      <div class="go">Buka aplikasi <span id="ch1"></span></div>
+    </a>
+
+    <a class="kartu" href="admin.html">
+      <div class="ic" id="ic2"></div>
+      <h2>Panel admin</h2>
+      <p>Pantau kehadiran hari ini, periksa bukti absen, setujui pengajuan cuti, dan unduh laporan kepegawaian.</p>
+      <div class="go">Buka panel <span id="ch2"></span></div>
+    </a>
+  </div>
+
+  <div class="catatan">
+    Prototipe tampilan — data masih contoh dan tersimpan di browser ini saja.<br>
+    GPS dan kamera hanya berfungsi lewat <code>https://</code> atau <code>localhost</code>.
+  </div>
+</div>
+
+<script src="assets/js/icons.js"></script>
+<script>
+  document.getElementById('ic1').innerHTML = icon('check-clipboard', 23, 'var(--goldInk)', 2.6);
+  document.getElementById('ic2').innerHTML = icon('grid', 23, 'var(--goldInk)', 2.6);
+  document.getElementById('ch1').innerHTML = icon('chevron', 15, 'currentColor', 2.6);
+  document.getElementById('ch2').innerHTML = icon('chevron', 15, 'currentColor', 2.6);
+</script>
+</body>
+</html>

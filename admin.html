@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0E2A47">
+<title>PresensiKu — Panel Admin</title>
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caprasimo&family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script>
+  try {
+    if (localStorage.getItem('presensiku.tema') === 'gelap') {
+      document.documentElement.dataset.tema = 'gelap';
+    }
+  } catch { /* localStorage diblokir — biarkan mode terang */ }
+</script>
+<!-- Leaflet: peta asli. Bila offline, gagal dimuat dan panel otomatis
+     kembali memakai peta ilustratif (lihat petaTersedia() di peta.js). -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/admin.css">
+</head>
+<body>
+
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+
+  <div class="main">
+    <header class="topbar" id="topbar"></header>
+    <div class="konten" id="konten"></div>
+  </div>
+</div>
+
+<div id="modal"></div>
+<div id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="assets/js/icons.js"></script>
+<script src="assets/js/util.js"></script>
+<script src="assets/js/data.js"></script>
+<script src="assets/js/peta.js"></script>
+<script src="assets/js/admin.js"></script>
+</body>
+</html>

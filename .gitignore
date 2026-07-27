@@ -1,0 +1,10 @@
+# Berkas sementara sistem
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Berkas editor
+.vscode/
+.idea/
+*.swp
+*~

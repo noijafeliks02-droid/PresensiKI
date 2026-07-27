@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0E2A47">
+<title>PresensiKu — Presensi Online Pegawai</title>
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="PresensiKu">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caprasimo&family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script>
+  // Pasang tema sebelum halaman tergambar, supaya mode gelap tidak
+  // berkedip terang lebih dulu saat dimuat.
+  try {
+    if (localStorage.getItem('presensiku.tema') === 'gelap') {
+      document.documentElement.dataset.tema = 'gelap';
+    }
+  } catch { /* localStorage diblokir — biarkan mode terang */ }
+</script>
+<!-- Leaflet: peta asli. Bila offline, gagal dimuat dan aplikasi otomatis
+     kembali memakai peta ilustratif (lihat petaTersedia() di peta.js). -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/app.css">
+</head>
+<body class="stage">
+
+<a class="ke-admin" href="admin.html">Panel Admin →</a>
+
+<div class="bezel">
+  <div class="phone">
+
+    <!-- Status bar tiruan, selalu di atas semua layar -->
+    <div class="statusbar">
+      <span class="jam" id="sbJam">07:30</span>
+      <div class="kanan">
+        <div class="sinyal">
+          <i style="height:4px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:11px"></i>
+        </div>
+        <span class="net">5G</span>
+        <div class="baterai">
+          <div class="body"><div class="isi"></div></div>
+          <div class="tip"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Seluruh layar dirender ke sini oleh app.js -->
+    <main id="layar"></main>
+
+    <!-- Bottom navigation (disembunyikan di layar Login, Selfie, Sukses, Form) -->
+    <nav class="bottom-nav" id="nav" hidden></nav>
+
+    <!-- Wadah notifikasi singkat -->
+    <div id="toast"></div>
+
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="assets/js/icons.js"></script>
+<script src="assets/js/util.js"></script>
+<script src="assets/js/data.js"></script>
+<script src="assets/js/peta.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+{
+  "name": "PresensiKu — Presensi Online Berbasis Lokasi",
+  "short_name": "PresensiKu",
+  "description": "Sistem presensi pegawai berbasis GPS dengan verifikasi selfie.",
+  "lang": "id",
+  "dir": "ltr",
+  "start_url": "./pegawai.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0E2A47",
+  "theme_color": "#0E2A47",
+  "icons": [
+    {
+      "src": "assets/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
