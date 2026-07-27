@@ -30,7 +30,11 @@
   background: var(--paper);
 }
 
-@media (max-width: 480px), (max-height: 700px) {
+/* Bingkai perangkat butuh 812px + 60px ruang panggung. Bila jendela lebih
+   pendek dari itu, bingkainya tidak muat dan halaman ikut menggulir —
+   membawa serta status bar dan navigasi. Maka ambangnya 900px: di bawah
+   itu langsung layar penuh, dan halaman tidak pernah bisa menggulir. */
+@media (max-width: 480px), (max-height: 899px) {
   .stage { padding: 0; align-items: stretch; }
   .bezel { width: 100%; border-radius: 0; box-shadow: none; }
   .phone { width: 100%; height: 100vh; height: 100dvh; border-radius: 0; }
@@ -536,3 +540,21 @@
 .toast.err { background: var(--danger); color: #fff; }
 
 .kosong { text-align: center; padding: 34px 0; color: var(--mut); font-size: 13px; font-weight: 600; }
+
+/* ============================================================
+   Penguncian mode layar penuh
+   ------------------------------------------------------------
+   Saat bingkai perangkat hilang, elemen yang menempel di tepi dikunci ke
+   layar (viewport), bukan ke halaman — jam, navigasi bawah, dan toast
+   tetap diam sekalipun peramban menggulirkan halamannya sendiri
+   (mis. saat bilah alamat HP menyusut).
+
+   Blok ini WAJIB berada di akhir berkas: aturan dasarnya memakai
+   position absolute dengan spesifisitas sama, jadi yang menang adalah
+   yang ditulis paling akhir.
+   ============================================================ */
+@media (max-width: 480px), (max-height: 899px) {
+  .statusbar { position: fixed; }
+  .bottom-nav { position: fixed; }
+  .toast { position: fixed; }
+}
