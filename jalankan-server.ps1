@@ -69,23 +69,34 @@ try {
     $akar = [IO.Path]::GetFullPath($root).TrimEnd('\') + '\'
     $aman = $penuh.StartsWith($akar, [StringComparison]::OrdinalIgnoreCase)
 
-    if ($aman -and (Test-Path -LiteralPath $penuh -PathType Leaf)) {
-      $ext = [IO.Path]::GetExtension($penuh).ToLower()
-      $type = $mimes[$ext]
-      if (-not $type) { $type = 'application/octet-stream' }
+    # Permintaan HEAD hanya minta header, tanpa isi. Menulis isi ke
+    # responsnya membuat HttpListener melempar galat dan server berhenti.
+    $kepalaSaja = $ctx.Request.HttpMethod -eq 'HEAD'
 
-      $bytes = [IO.File]::ReadAllBytes($penuh)
-      $ctx.Response.ContentType = $type
-      $ctx.Response.Headers.Add('Cache-Control', 'no-store')
-      $ctx.Response.ContentLength64 = $bytes.Length
-      $ctx.Response.OutputStream.Write($bytes, 0, $bytes.Length)
-    } else {
-      $msg = [Text.Encoding]::UTF8.GetBytes("404 - $rel tidak ditemukan")
-      $ctx.Response.StatusCode = 404
-      $ctx.Response.ContentType = 'text/plain; charset=utf-8'
-      $ctx.Response.OutputStream.Write($msg, 0, $msg.Length)
+    # Satu permintaan bermasalah (mis. browser menutup koneksi di tengah
+    # jalan) tidak boleh mematikan seluruh server.
+    try {
+      if ($aman -and (Test-Path -LiteralPath $penuh -PathType Leaf)) {
+        $ext = [IO.Path]::GetExtension($penuh).ToLower()
+        $type = $mimes[$ext]
+        if (-not $type) { $type = 'application/octet-stream' }
+
+        $bytes = [IO.File]::ReadAllBytes($penuh)
+        $ctx.Response.ContentType = $type
+        $ctx.Response.Headers.Add('Cache-Control', 'no-store')
+        $ctx.Response.ContentLength64 = $bytes.Length
+        if (-not $kepalaSaja) { $ctx.Response.OutputStream.Write($bytes, 0, $bytes.Length) }
+      } else {
+        $msg = [Text.Encoding]::UTF8.GetBytes("404 - $rel tidak ditemukan")
+        $ctx.Response.StatusCode = 404
+        $ctx.Response.ContentType = 'text/plain; charset=utf-8'
+        $ctx.Response.ContentLength64 = $msg.Length
+        if (-not $kepalaSaja) { $ctx.Response.OutputStream.Write($msg, 0, $msg.Length) }
+      }
+      $ctx.Response.Close()
+    } catch {
+      try { $ctx.Response.Abort() } catch { }
     }
-    $ctx.Response.Close()
   }
 } finally {
   $listener.Stop()

@@ -158,7 +158,7 @@ function layarLogin() {
     <div class="login-atas">
       <img class="login-logo" src="assets/icon.svg" alt="">
       <h1 class="login-wordmark">PresensiKu</h1>
-      <hr class="garis-emas" style="margin:18px 0 16px">
+      <hr class="garis-emas login-garis">
       <p class="login-desk">Presensi berbasis lokasi untuk pegawai Kementerian Pekerjaan Umum.</p>
     </div>
 
@@ -190,7 +190,7 @@ function layarLogin() {
       </div>
 
       <div id="errLogin"></div>
-      <button type="submit" class="btn-gold" style="margin-top:24px">Masuk</button>
+      <button type="submit" class="btn-gold login-masuk">Masuk</button>
       <button type="button" class="login-lupa" data-aksi="lupaSandi">Lupa kata sandi?</button>
     </form>
   </div>`;
@@ -820,6 +820,23 @@ const LAYAR = {
   cutiForm: layarCutiForm,
 };
 
+/* Layar login harus muat utuh tanpa digulir — kalau tombol "Lupa kata
+   sandi?" tersembunyi di bawah lipatan, pegawai yang lupa sandinya tidak
+   punya jalan keluar. Tinggi layar HP terlalu beragam untuk ditebak lewat
+   media query, jadi di sini layarnya benar-benar diukur: selama isinya
+   masih meluber, spasi login dirapatkan satu tingkat. Ukuran tiap tingkat
+   ada di app.css (.login[data-rapat="1"] dan "2"). */
+const RAPAT_MAKS = 2;
+
+function paskanLogin() {
+  const el = $layar.querySelector('.login');
+  if (!el) return;
+  el.removeAttribute('data-rapat');
+  for (let n = 1; n <= RAPAT_MAKS && el.scrollHeight > el.clientHeight + 1; n++) {
+    el.dataset.rapat = String(n);
+  }
+}
+
 function render() {
   segarkanProfil();
   lepasPeta();
@@ -828,6 +845,30 @@ function render() {
   if (S.layar === 'selfie') nyalakanKamera();
   if (S.layar === 'peta') pasangPetaPegawai();
   pasangFormHandler();
+  if (S.layar === 'login') paskanLogin();
+}
+
+// Tinggi layar berubah saat HP diputar atau bilah peramban muncul/hilang;
+// ukur ulang supaya tingkat perapatannya ikut menyesuaikan.
+window.addEventListener('resize', () => {
+  if (S.layar !== 'login') return;
+  // Kecuali saat papan ketik terbuka: tinggi layar menyusut drastis dan
+  // ukuran tulisan akan melompat-lompat di tengah pengetikan. Peramban
+  // sudah menggeser sendiri kolom yang sedang diisi ke area terlihat,
+  // jadi pengukuran ditunda sampai fokusnya lepas.
+  const f = document.activeElement;
+  if (f && f.tagName === 'INPUT' && f.closest('.login')) return;
+  paskanLogin();
+});
+window.addEventListener('orientationchange', () => {
+  if (S.layar === 'login') setTimeout(paskanLogin, 250);
+});
+
+// Caprasimo dan Figtree dimuat dari internet. Sebelum keduanya siap,
+// teks memakai huruf cadangan yang tingginya berbeda — ukur ulang setelah
+// huruf aslinya terpasang.
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(() => { if (S.layar === 'login') paskanLogin(); });
 }
 
 function pindah(layar) {

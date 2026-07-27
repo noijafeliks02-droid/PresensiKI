@@ -115,34 +115,86 @@
   position: absolute; inset: 0;
   background: var(--navy);
   display: flex; flex-direction: column; overflow-y: auto;
+
+  /* Ukuran renggang — dipakai selama isinya muat di layar. */
+  --l-pad-atas: 28px;  --l-pad-bawah: 24px;
+  --l-logo: 76px;      --l-nama: 40px;      --l-nama-mt: 26px;
+  --l-garis-mt: 18px;  --l-garis-mb: 16px;  --l-desk: 14px;
+  --l-panel-y: 32px;   --l-panel-b: 34px;   --l-h2: 24px;
+  --l-form-mt: 24px;   --l-form-gap: 14px;  --l-field-y: 15px;
+  --l-btn-mt: 24px;    --l-btn-y: 19px;     --l-lupa-mt: 10px;
 }
+
+/* Dua tingkat perapatan. app.js mengukur layar sungguhan lalu memasang
+   data-rapat="1" atau "2" bila isinya belum muat — jadi tidak bergantung
+   pada tebakan ukuran layar, dan tombol "Lupa kata sandi?" tetap terlihat
+   di HP mana pun. Lihat paskanLogin() di app.js. */
+.login[data-rapat="1"] {
+  --l-pad-atas: 20px;  --l-pad-bawah: 18px;
+  --l-logo: 62px;      --l-nama: 33px;      --l-nama-mt: 17px;
+  --l-garis-mt: 13px;  --l-garis-mb: 12px;  --l-desk: 13.5px;
+  --l-panel-y: 24px;   --l-panel-b: 24px;   --l-h2: 22px;
+  --l-form-mt: 18px;   --l-form-gap: 11px;  --l-field-y: 13px;
+  --l-btn-mt: 18px;    --l-btn-y: 16px;     --l-lupa-mt: 6px;
+}
+.login[data-rapat="2"] {
+  --l-pad-atas: 14px;  --l-pad-bawah: 12px;
+  --l-logo: 48px;      --l-nama: 26px;      --l-nama-mt: 12px;
+  --l-garis-mt: 10px;  --l-garis-mb: 9px;   --l-desk: 12.5px;
+  --l-panel-y: 18px;   --l-panel-b: 18px;   --l-h2: 19px;
+  --l-form-mt: 14px;   --l-form-gap: 9px;   --l-field-y: 11px;
+  --l-btn-mt: 14px;    --l-btn-y: 14px;     --l-lupa-mt: 4px;
+}
+/* Layar sangat pendek (mis. HP dimiringkan): kalimat penjelas dilepas
+   supaya formulirnya sendiri tetap utuh. */
+.login[data-rapat="2"] .login-desk { display: none; }
+
+/* Ruang atas dibuat dari flex-grow, bukan dari padding tetap. Di layar
+   tinggi bagian ini memuai dan isinya tetap di tengah — tampilannya sama
+   seperti sebelumnya. Di layar pendek ia mengecil sampai sebatas isinya,
+   sehingga panel "Masuk" (termasuk tombol "Lupa kata sandi?") tetap
+   terlihat utuh tanpa perlu digulir. */
 .login-atas {
-  flex: 1; display: flex; flex-direction: column;
+  flex: 1 1 auto; display: flex; flex-direction: column;
   align-items: center; justify-content: center; text-align: center;
-  padding: 70px 30px 40px;
+  padding: var(--l-pad-atas) 30px var(--l-pad-bawah);
 }
-.login-logo { width: 76px; height: 76px; border-radius: 26px; display: block; }
+.login-logo {
+  width: var(--l-logo); height: var(--l-logo);
+  border-radius: calc(var(--l-logo) * .34); display: block;
+}
 .login-wordmark {
   font-family: var(--font-display); font-weight: 400;
-  font-size: 40px; color: #fff; margin: 26px 0 0; line-height: 1;
+  font-size: var(--l-nama); color: #fff; margin: var(--l-nama-mt) 0 0; line-height: 1;
 }
+.login-garis { margin: var(--l-garis-mt) 0 var(--l-garis-mb); }
 .login-desk {
-  font-size: 14px; font-weight: 600; color: rgba(255, 255, 255, .62);
+  font-size: var(--l-desk); font-weight: 600; color: rgba(255, 255, 255, .62);
   line-height: 1.6; max-width: 26ch;
 }
 .login-panel {
+  flex: none;
   background: var(--paper);
   border-radius: var(--r-sheet) var(--r-sheet) 0 0;
-  padding: 32px 28px 34px;
+  padding: var(--l-panel-y) 28px var(--l-panel-b);
 }
 .login-panel h2 {
   font-family: var(--font-display); font-weight: 400;
-  font-size: 24px; color: var(--ink); margin: 0;
+  font-size: var(--l-h2); color: var(--ink); margin: 0;
 }
 .login-panel .sub { font-size: 13.5px; font-weight: 600; color: var(--mut); margin-top: 6px; }
-.login-form { display: flex; flex-direction: column; gap: 14px; margin-top: 24px; }
+.login-form {
+  display: flex; flex-direction: column;
+  gap: var(--l-form-gap); margin-top: var(--l-form-mt);
+}
+.login .field { padding: var(--l-field-y) 20px; }
+.login-masuk { margin-top: var(--l-btn-mt); padding: var(--l-btn-y); }
+/* Padding 8px memperbesar area sentuh tombol ini — di HP tulisan 13px
+   saja terlalu kecil untuk dijangkau jempol dengan nyaman. Nilai
+   --l-lupa-mt sudah dikurangi sebesar itu agar jarak visualnya tetap. */
 .login-lupa {
-  display: block; width: 100%; text-align: center; margin-top: 18px;
+  display: block; width: 100%; text-align: center;
+  margin-top: var(--l-lupa-mt); padding: 8px 0;
   font-size: 13px; font-weight: 700; color: var(--mut);
   background: none; border: none; cursor: pointer;
 }
