@@ -553,9 +553,19 @@ const VERIF = {
   /* Ambang tanda gerak. Satuannya RELATIF terhadap ukuran wajah pengguna
      sendiri, bukan piksel layar — dengan begitu ambangnya tidak berubah
      mengikuti jarak wajah ke kamera maupun resolusi HP. */
-  GESER_MIN: 0.30,         // perpindahan titik berat, dalam satuan sebaran wajah
+  /* Disetel dari pengukuran wajah yang MEMENUHI bingkai — keadaan
+     sebenarnya pada selfie HP. Di situ menoleh sungguhan menggeser titik
+     berat sekitar 0,23 satuan dan menunduk sekitar 0,15, sedangkan
+     bergeser tak sengaja hanya 0,03–0,07. Ambang 0,30 yang dipakai
+     sebelumnya berada di atas gerakan yang benar sekalipun, sehingga
+     bilah kemajuannya tidak pernah sampai penuh.
+
+     Gerakan kecil tetap tertahan oleh cukupBerubah(): pada wajah yang
+     memenuhi bingkai, bergeser menyamping justru hampir tidak memindahkan
+     titik berat, sedangkan pada wajah kecil perubahan pikselnya belum
+     mencapai gerbang kasar. Keduanya saling menutup. */
+  GESER_MIN: 0.14,         // perpindahan titik berat, dalam satuan sebaran wajah
   DOMINASI: 1.5,           // sumbu utama harus sekian kali sumbu satunya
-  SKALA_MIN: 1.15,         // pembesaran wajah untuk perintah "dekatkan"
   MULUT_MIN: 7,            // persen piksel berubah di paruh bawah
   MULUT_RASIO: 2.2,        // paruh bawah harus sekian kali paruh atas
   PITA_GESER_MAKS: 0.18,   // mulut dibuka TANPA kepala ikut berpindah
@@ -578,8 +588,13 @@ function contohPiksel() {
   c.width = L; c.height = T;
   const ctx = c.getContext('2d', { willReadFrequently: true });
 
-  const sisiL = video.videoWidth * 0.62;
-  const sisiT = video.videoHeight * 0.68;
+  // Hampir seluruh bingkai diambil. Versi sebelumnya hanya 62% bagian
+  // tengah — terlalu sempit: pada selfie HP wajah sudah memenuhi layar,
+  // sehingga area ukurnya penuh oleh wajah saja. Akibatnya mendekatkan
+  // wajah tidak terbaca sebagai membesar, karena yang keluar bingkai
+  // sebanyak yang masuk.
+  const sisiL = video.videoWidth * 0.92;
+  const sisiT = video.videoHeight * 0.92;
   ctx.drawImage(video,
     (video.videoWidth - sisiL) / 2, (video.videoHeight - sisiT) / 2, sisiL, sisiT,
     0, 0, L, T);
@@ -739,12 +754,13 @@ const UJI_GERAK = {
       maju: utama / VERIF.GESER_MIN,
     };
   },
-  mendekat(c) {
-    return {
-      lolos: cukupBerubah(c) && c.skala >= VERIF.SKALA_MIN,
-      maju: (c.skala - 1) / (VERIF.SKALA_MIN - 1),
-    };
-  },
+  /* Perintah "dekatkan wajah ke kamera" sudah DIHAPUS. Pada selfie HP
+     wajah biasanya sudah memenuhi bingkai, sehingga mendekat tidak lagi
+     membesarkan sebarannya — yang keluar bingkai sebanyak yang masuk.
+     Pengukuran menunjukkan skalanya hanya naik ke 1,02 padahal wajahnya
+     jelas mendekat. Lebih baik perintahnya ditiadakan daripada dipaksakan
+     dengan ambang yang rapuh dan membuat pegawai tertahan. */
+
   /* Membuka mulut: paruh bawah bergolak jauh lebih kuat daripada paruh
      atas, dan kepalanya sendiri tidak berpindah. Perintah ini penting
      dipertahankan — foto cetak bisa digeser, ditengadahkan, dan
@@ -795,18 +811,33 @@ function aturMaju(bagian) {
   isi.style.width = Math.min(100, Math.max(0, bagian * 100)).toFixed(0) + '%';
 }
 
-/** Tulis angka mentah pengukuran — hanya aktif di mode diagnostik. */
+/**
+ * Tulis angka pengukuran — hanya aktif di mode diagnostik.
+ *
+ * Yang ditampilkan bukan hanya nilai sesaat, tetapi juga PUNCAK yang pernah
+ * dicapai beserta targetnya. Dengan begitu satu kali percobaan sudah cukup
+ * untuk mengetahui seberapa jauh gerakan sungguhan dari ambangnya, tanpa
+ * pengguna harus memotret layar tepat pada detik yang pas.
+ */
 function tulisDiagnostik(beda, c, uji) {
-  if (!DIAGNOSTIK) return;
+  if (!DIAGNOSTIK || !c) return;
   const el = document.getElementById('diag');
   if (!el) return;
+  const v = S.verif;
+  v.puncakDx = Math.max(v.puncakDx || 0, Math.abs(c.dx));
+  v.puncakDy = Math.max(v.puncakDy || 0, Math.abs(c.dy));
+  v.puncakSkala = Math.max(v.puncakSkala || 1, c.skala);
+  v.puncakBawah = Math.max(v.puncakBawah || 0, c.bawah);
+  v.puncakAtas = Math.max(v.puncakAtas || 0, c.atas);
+
+  const n = (x, d = 2) => (Math.round(x * 10 ** d) / 10 ** d).toFixed(d);
   el.hidden = false;
-  const n = (v) => (v == null ? '—' : (Math.round(v * 100) / 100).toFixed(2));
-  el.textContent = c
-    ? `beda ${n(beda)}%  dx ${n(c.dx)}  dy ${n(c.dy)}  skala ${n(c.skala)}\n`
-      + `atas ${n(c.atas)}%  bawah ${n(c.bawah)}%  maju ${n(uji.maju)}  `
-      + `${uji.lolos ? 'LOLOS' : '—'}`
-    : `beda ${n(beda)}%  (ciri belum terbaca)`;
+  el.textContent =
+    `${v.tantangan.id} · ${v.tantangan.uji} · maju ${n(uji.maju)} ${uji.lolos ? 'LOLOS' : ''}\n`
+    + `dx ${n(c.dx)} pk ${n(v.puncakDx)}/${VERIF.GESER_MIN}   `
+    + `dy ${n(c.dy)} pk ${n(v.puncakDy)}/${VERIF.GESER_MIN}\n`
+    + `atas ${n(c.atas, 0)} pk ${n(v.puncakAtas, 0)}   `
+    + `bawah ${n(c.bawah, 0)} pk ${n(v.puncakBawah, 0)}/${VERIF.MULUT_MIN}`;
 }
 
 /** Pindah fase dan sesuaikan seluruh tampilan layar Selfie. */
@@ -896,7 +927,10 @@ function pantauGerak() {
     return;
   }
   v.gerakBerturut = 0;
-  aturMaju(Math.min(0.5, uji.maju * 0.5));
+  // Bilahnya menunjukkan kemajuan yang SEBENARNYA. Versi sebelumnya
+  // mengalikannya 0,5 dan memotongnya di 50%, sehingga gerakan yang sudah
+  // hampir cukup pun terlihat seperti nyaris tidak terbaca.
+  aturMaju(Math.min(0.95, uji.maju));
 
   // Wajah kembali tenang → pembanding disegarkan ke keadaan tenang yang
   // baru. Inilah yang menahan pergeseran pelan (pencahayaan berangsur

@@ -62,14 +62,13 @@ const AKURASI_MAKS = 100;
      mendatar  titik berat wajah berpindah ke samping, jauh lebih besar
                daripada perpindahan tegaknya
      tegak     sebaliknya: berpindah naik-turun, bukan ke samping
-     mendekat  wajah membesar dalam bingkai
-     mulut     perubahan terpusat di pita mulut, sementara kepala diam */
+     mulut     paruh bawah bingkai teraduk jauh lebih kuat daripada paruh
+               atas, sementara kepalanya sendiri tidak berpindah */
 const TANTANGAN = [
   { id: 'kanan', teks: 'Tolehkan kepala ke kanan', ikon: 'chevron', uji: 'mendatar' },
   { id: 'kiri', teks: 'Tolehkan kepala ke kiri', ikon: 'chevron-left', uji: 'mendatar' },
   { id: 'atas', teks: 'Tengadahkan kepala ke atas', ikon: 'chevron-up', uji: 'tegak' },
   { id: 'bawah', teks: 'Tundukkan kepala ke bawah', ikon: 'chevron-down', uji: 'tegak' },
-  { id: 'dekat', teks: 'Dekatkan wajah ke kamera', ikon: 'target', uji: 'mendekat' },
   { id: 'mulut', teks: 'Buka mulut lebar-lebar', ikon: 'mulut', uji: 'mulut' },
 ];
 

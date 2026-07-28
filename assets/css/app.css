@@ -423,8 +423,8 @@
   background: rgba(255, 255, 255, .08);
   border-radius: 12px;
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  font-size: 10.5px; line-height: 1.5; color: rgba(255, 255, 255, .72);
-  max-width: 100%; word-break: break-word;
+  font-size: 10.5px; line-height: 1.6; color: rgba(255, 255, 255, .72);
+  max-width: 100%; white-space: pre-line; text-align: left;
 }
 .selfie-tengah .s { font-size: 13px; font-weight: 500; color: rgba(255, 255, 255, .5); margin-top: 8px; }
 .shutter-wrap { display: flex; justify-content: center; padding-bottom: 54px; }
