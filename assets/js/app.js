@@ -565,10 +565,25 @@ const VERIF = {
      titik berat, sedangkan pada wajah kecil perubahan pikselnya belum
      mencapai gerbang kasar. Keduanya saling menutup. */
   GESER_MIN: 0.14,         // perpindahan titik berat, dalam satuan sebaran wajah
-  DOMINASI: 1.5,           // sumbu utama harus sekian kali sumbu satunya
-  MULUT_MIN: 7,            // persen piksel berubah di paruh bawah
+
+  /* Sumbu yang diminta harus mencapai sekian kali sumbu satunya.
+     Semula 1,5 — menuntut gerakan lurus pada satu sumbu saja. Pengukuran
+     di HP menunjukkan itu tidak realistis: saat menengadah, kepala ikut
+     bergeser menyamping sehingga dx 0,27 justru melampaui dy 0,22.
+     Gerakan kepala manusia diagonal, bukan lurus.
+
+     Nilai 0,7 tetap menolak gerakan yang benar-benar tegak lurus terhadap
+     perintah — menoleh murni (dy hampir nol) tidak akan meloloskan
+     perintah tengadah, dan sebaliknya. */
+  SUMBU_MIN: 0.7,
+  /* Menggerakkan kepala saja sudah membuat paruh bawah berubah sampai 53
+     persen pada pengukuran di HP, jadi ambang 7 terlalu rendah untuk
+     menjadi pembeda. Yang benar-benar membedakan adalah rasio: membuka
+     mulut hanya mengaduk paruh bawah, sedangkan menggerakkan kepala
+     mengaduk kedua paruh hampir sama rata (45 lawan 40). */
+  MULUT_MIN: 10,           // persen piksel berubah di paruh bawah
   MULUT_RASIO: 2.2,        // paruh bawah harus sekian kali paruh atas
-  PITA_GESER_MAKS: 0.18,   // mulut dibuka TANPA kepala ikut berpindah
+  PITA_GESER_MAKS: 0.20,   // mulut dibuka TANPA kepala ikut berpindah
 };
 
 /** Mode diagnostik: buka halaman dengan ?diagnostik untuk melihat angkanya. */
@@ -739,21 +754,31 @@ function bandingkanCiri(dasar, kini) {
  * Yang diperiksa adalah SUMBU gerakannya — menoleh tidak akan lolos oleh
  * anggukan, dan sebaliknya.
  */
+/**
+ * Kemajuan gabungan dari beberapa syarat.
+ *
+ * Bilah kemajuan HARUS mencerminkan syarat yang paling tertinggal, bukan
+ * yang paling maju. Sebelumnya ia hanya mengikuti besar gerakan, sehingga
+ * bilahnya nyaris penuh padahal yang menahan adalah syarat arah — pengguna
+ * melihat "hampir cukup" dan terus mencoba lebih keras ke arah yang keliru.
+ */
+function majuGabungan(...bagian) {
+  return Math.min(...bagian.map(x => (isFinite(x) ? Math.max(0, x) : 1)));
+}
+
+function ujiSumbu(utama, lain, c) {
+  const cukupJauh = utama / VERIF.GESER_MIN;
+  const cukupSearah = lain > 0.0001 ? utama / (lain * VERIF.SUMBU_MIN) : 1;
+  const cukupKuat = Math.max(c.atas, c.bawah) / AMBANG_GERAK;
+  return {
+    lolos: cukupJauh >= 1 && cukupSearah >= 1 && cukupKuat >= 1,
+    maju: majuGabungan(cukupJauh, cukupSearah, cukupKuat),
+  };
+}
+
 const UJI_GERAK = {
-  mendatar(c) {
-    const utama = Math.abs(c.dx), lain = Math.abs(c.dy);
-    return {
-      lolos: cukupBerubah(c) && utama >= VERIF.GESER_MIN && utama >= lain * VERIF.DOMINASI,
-      maju: utama / VERIF.GESER_MIN,
-    };
-  },
-  tegak(c) {
-    const utama = Math.abs(c.dy), lain = Math.abs(c.dx);
-    return {
-      lolos: cukupBerubah(c) && utama >= VERIF.GESER_MIN && utama >= lain * VERIF.DOMINASI,
-      maju: utama / VERIF.GESER_MIN,
-    };
-  },
+  mendatar: (c) => ujiSumbu(Math.abs(c.dx), Math.abs(c.dy), c),
+  tegak: (c) => ujiSumbu(Math.abs(c.dy), Math.abs(c.dx), c),
   /* Perintah "dekatkan wajah ke kamera" sudah DIHAPUS. Pada selfie HP
      wajah biasanya sudah memenuhi bingkai, sehingga mendekat tidak lagi
      membesarkan sebarannya — yang keluar bingkai sebanyak yang masuk.
@@ -771,20 +796,15 @@ const UJI_GERAK = {
      jadi syarat besarannya berdiri sendiri di c.bawah. */
   mulut(c) {
     const geser = Math.max(Math.abs(c.dx), Math.abs(c.dy));
+    const cukupKuat = c.bawah / VERIF.MULUT_MIN;
+    const cukupTerpusat = c.atas > 0.01 ? (c.bawah / c.atas) / VERIF.MULUT_RASIO : 1;
+    const kepalaDiam = geser > 0.0001 ? VERIF.PITA_GESER_MAKS / geser : 1;
     return {
-      lolos: c.bawah >= VERIF.MULUT_MIN
-        && c.bawah >= c.atas * VERIF.MULUT_RASIO
-        && geser <= VERIF.PITA_GESER_MAKS,
-      maju: c.bawah / VERIF.MULUT_MIN,
+      lolos: cukupKuat >= 1 && cukupTerpusat >= 1 && kepalaDiam >= 1,
+      maju: majuGabungan(cukupKuat, cukupTerpusat, kepalaDiam),
     };
   },
 };
-
-/** Gerbang kasar untuk perintah gerak kepala: harus ada perubahan nyata,
-    bukan sekadar titik berat yang bergoyang karena derau. */
-function cukupBerubah(c) {
-  return Math.max(c.atas, c.bawah) >= AMBANG_GERAK;
-}
 
 /** Tulis teks status di bawah bingkai kamera. */
 function statusVerif(judul, ket, kelas = '') {
