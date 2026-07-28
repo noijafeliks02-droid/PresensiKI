@@ -496,6 +496,22 @@ function labelVerifikasi(v) {
   return { teks: 'Tanpa kamera', chip: 'chip-grey' };
 }
 
+/**
+ * Ringkasan tanda gerak yang meloloskan verifikasi.
+ * Ditampilkan apa adanya supaya admin bisa menilai sendiri: menoleh
+ * menghasilkan pergeseran mendatar besar, membuka mulut menaikkan angka
+ * pita tanpa kepala berpindah, dan seterusnya.
+ */
+function tandaGerak(v) {
+  if (!v) return '—';
+  const p = [];
+  if (v.geserX != null) p.push(`geser ↔ ${v.geserX}`);
+  if (v.geserY != null) p.push(`geser ↕ ${v.geserY}`);
+  if (v.skala != null) p.push(`skala ${v.skala}`);
+  if (v.paruhBawah != null) p.push(`atas ${v.paruhAtas}% / bawah ${v.paruhBawah}%`);
+  return p.length ? `<span class="mono">${p.join(' · ')}</span>` : '—';
+}
+
 /** Ada tahap yang lolos tanpa gerakan meyakinkan? */
 function perluDiperiksa(b) {
   return (b.verifikasi && b.verifikasi.hasil === 'lemah')
@@ -558,6 +574,8 @@ function dialogBukti(pegawaiId) {
         : '—'],
       ['Saat Difoto', verif && verif.saatFoto != null
         ? `<span class="mono">${verif.saatFoto}%</span>` : '—'],
+      // Tanda gerak: inilah yang membedakan menoleh dari sekadar bergeser.
+      ['Tanda Gerak', tandaGerak(verif)],
     ];
   };
 

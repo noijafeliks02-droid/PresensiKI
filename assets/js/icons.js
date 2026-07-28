@@ -44,6 +44,7 @@ const ICON_PATHS = {
 
   /* Ikon tantangan verifikasi wajah */
   'chevron-up': '<path d="m6 15 6-6 6 6"/>',
+  'chevron-down': '<path d="m6 9 6 6 6-6"/>',
   senyum: '<circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01M15 9h.01"/>',
   mulut: '<circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="14.5" rx="3.5" ry="2.5"/><path d="M9 9h.01M15 9h.01"/>',
   perisai: '<path d="M12 3l7 3v6c0 4.5-3 7.8-7 9-4-1.2-7-4.5-7-9V6Z"/><path d="m9 12 2 2 4-4"/>',

@@ -416,6 +416,16 @@
 .selfie-tengah .t { font-size: 15.5px; font-weight: 800; color: #fff; margin-top: 22px; }
 .selfie-tengah .t.gagal { color: var(--danger); }
 .selfie-tengah .t.lolos { color: var(--sageInk); }
+
+/* Panel angka mentah — hanya tampil di mode diagnostik. */
+.selfie-tengah .diagnostik {
+  margin-top: 14px; padding: 9px 12px;
+  background: rgba(255, 255, 255, .08);
+  border-radius: 12px;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 10.5px; line-height: 1.5; color: rgba(255, 255, 255, .72);
+  max-width: 100%; word-break: break-word;
+}
 .selfie-tengah .s { font-size: 13px; font-weight: 500; color: rgba(255, 255, 255, .5); margin-top: 8px; }
 .shutter-wrap { display: flex; justify-content: center; padding-bottom: 54px; }
 .shutter {

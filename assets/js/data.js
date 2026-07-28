@@ -53,17 +53,24 @@ const AKURASI_MAKS = 100;
    dari rumah. Perintah yang keluar ikut disimpan bersama fotonya, sehingga
    admin bisa memeriksa sendiri apakah wajah di foto benar melakukannya.
 
-   Tiap tantangan punya ambangnya sendiri, karena besar perubahannya jauh
-   berbeda: menoleh menggeser hampir seluruh wajah, sedangkan membuka mulut
-   hanya mengubah sebagian kecil bingkai. Menyamakan ambangnya akan membuat
-   perintah ekspresi selalu dianggap gagal. */
+   Tiap tantangan menyebut JENIS UJI-nya, bukan sekadar ambang angka.
+   Mengukur "berapa persen piksel berubah" saja tidak cukup: menoleh,
+   membuka mulut, dan sekadar bergeser sedikit sama-sama mengubah piksel,
+   sehingga gerakan apa pun akan meloloskan perintah apa pun. Yang diperiksa
+   sekarang adalah bentuk gerakannya — lihat ciriFrame() di app.js.
+
+     mendatar  titik berat wajah berpindah ke samping, jauh lebih besar
+               daripada perpindahan tegaknya
+     tegak     sebaliknya: berpindah naik-turun, bukan ke samping
+     mendekat  wajah membesar dalam bingkai
+     mulut     perubahan terpusat di pita mulut, sementara kepala diam */
 const TANTANGAN = [
-  { id: 'kanan', teks: 'Tolehkan kepala ke kanan', ikon: 'chevron', ambang: 8 },
-  { id: 'kiri', teks: 'Tolehkan kepala ke kiri', ikon: 'chevron-left', ambang: 8 },
-  { id: 'atas', teks: 'Tengadahkan kepala ke atas', ikon: 'chevron-up', ambang: 7 },
-  { id: 'dekat', teks: 'Dekatkan wajah ke kamera', ikon: 'target', ambang: 9 },
-  { id: 'mulut', teks: 'Buka mulut lebar-lebar', ikon: 'mulut', ambang: 4 },
-  { id: 'senyum', teks: 'Tersenyum sambil miringkan kepala', ikon: 'senyum', ambang: 5 },
+  { id: 'kanan', teks: 'Tolehkan kepala ke kanan', ikon: 'chevron', uji: 'mendatar' },
+  { id: 'kiri', teks: 'Tolehkan kepala ke kiri', ikon: 'chevron-left', uji: 'mendatar' },
+  { id: 'atas', teks: 'Tengadahkan kepala ke atas', ikon: 'chevron-up', uji: 'tegak' },
+  { id: 'bawah', teks: 'Tundukkan kepala ke bawah', ikon: 'chevron-down', uji: 'tegak' },
+  { id: 'dekat', teks: 'Dekatkan wajah ke kamera', ikon: 'target', uji: 'mendekat' },
+  { id: 'mulut', teks: 'Buka mulut lebar-lebar', ikon: 'mulut', uji: 'mulut' },
 ];
 
 /** Undi satu tantangan. Sengaja Math.random, bukan RNG deterministik —
@@ -72,8 +79,9 @@ function pilihTantangan() {
   return TANTANGAN[Math.floor(Math.random() * TANTANGAN.length)];
 }
 
-/** Ambang cadangan bila sebuah tantangan tidak menetapkan ambangnya sendiri. */
-const AMBANG_GERAK = 6;
+/** Gerbang kasar: perubahan piksel minimum sebelum tanda gerak diperiksa.
+    Menahan getaran halus dan derau sensor agar tidak sempat dihitung. */
+const AMBANG_GERAK = 8;
 
 const PROFIL = {
   nama: 'Budi Santoso',

@@ -36,6 +36,9 @@ function kosongkanVerif() {
     tantangan: null,
     dasar: null,         // contoh piksel saat wajah masih diam
     terakhir: null,
+    dasarCiri: null,     // tanda wajah saat tenang — pembanding bentuk gerakan
+    ciriTerakhir: null,
+    lolosCiri: null,     // tanda gerak pada saat perintahnya dinyatakan lolos
     diamBerturut: 0,
     gerakBerturut: 0,
     puncak: 0,           // perubahan terbesar yang pernah terbaca
@@ -458,6 +461,11 @@ function layarSelfie() {
 
       <div class="t" id="verifJudul">Menyiapkan verifikasi…</div>
       <div class="s" id="verifKet">Tatap kamera dan diam sejenak.</div>
+
+      <!-- Angka mentah pengukuran, hanya muncul bila halaman dibuka dengan
+           ?diagnostik. Dipakai untuk menyetel ambang berdasarkan gerakan
+           sungguhan di HP pengguna, bukan tebakan. -->
+      <div class="diagnostik" id="diag" hidden></div>
     </div>
     <div class="shutter-wrap">
       <button class="shutter" data-aksi="jepret" disabled
@@ -538,10 +546,23 @@ const VERIF = {
   RAGAM_MIN: 6,            // di bawah ini gambarnya dianggap belum berisi
   DIAM_MAKS: 2,            // persen perubahan yang masih dianggap "diam"
   BUTUH_DIAM: 4,           // cuplikan diam berturut-turut sebelum dikunci
-  BUTUH_SEGAR: 7,          // cuplikan diam sebelum pembanding disegarkan
-  BUTUH_GERAK: 3,          // cuplikan berturut-turut di atas ambang
+  BUTUH_SEGAR: 8,          // cuplikan diam sebelum pembanding disegarkan
+  BUTUH_GERAK: 5,          // ±0,7 detik; gerakannya harus ditahan, bukan disentak
   BATAS_SABAR: 25000,      // ms; setelah ini presensi dibuka tetapi ditandai
+
+  /* Ambang tanda gerak. Satuannya RELATIF terhadap ukuran wajah pengguna
+     sendiri, bukan piksel layar — dengan begitu ambangnya tidak berubah
+     mengikuti jarak wajah ke kamera maupun resolusi HP. */
+  GESER_MIN: 0.30,         // perpindahan titik berat, dalam satuan sebaran wajah
+  DOMINASI: 1.5,           // sumbu utama harus sekian kali sumbu satunya
+  SKALA_MIN: 1.15,         // pembesaran wajah untuk perintah "dekatkan"
+  MULUT_MIN: 7,            // persen piksel berubah di paruh bawah
+  MULUT_RASIO: 2.2,        // paruh bawah harus sekian kali paruh atas
+  PITA_GESER_MAKS: 0.18,   // mulut dibuka TANPA kepala ikut berpindah
 };
+
+/** Mode diagnostik: buka halaman dengan ?diagnostik untuk melihat angkanya. */
+const DIAGNOSTIK = /(^|[?&])diagnostik(=|&|$)/.test(location.search);
 
 /**
  * Cuplikan piksel abu-abu dari KOTAK TENGAH frame — kira-kira area di dalam
@@ -602,6 +623,153 @@ function bedaPersen(a, b) {
   return Math.round((n / a.length) * 1000) / 10;
 }
 
+/* ------------------------------------------------------------
+   Tanda gerak
+   ------------------------------------------------------------
+   bedaPersen() hanya tahu ADA perubahan, bukan perubahan APA. Itulah
+   kelemahan yang membuat gerakan sekecil apa pun meloloskan perintah apa
+   pun: wajah penuh tepi berkontras, jadi bergeser sedikit saja sudah
+   mengubah persentase piksel yang besar.
+
+   ciriFrame() memerikan bentuk gerakannya. Bobotnya memakai energi tepi
+   (gradien), bukan kecerahan mentah, supaya titik beratnya mengikuti
+   garis wajah — alis, hidung, mulut, tepi pipi — dan tidak tergeser oleh
+   perubahan pencahayaan.
+   ------------------------------------------------------------ */
+
+function ciriFrame(abu) {
+  const L = VERIF.LEBAR, T = VERIF.TINGGI;
+  const e = new Float32Array(L * T);
+  let total = 0;
+
+  for (let y = 0; y < T; y++) {
+    for (let x = 0; x < L; x++) {
+      const i = y * L + x;
+      const gx = x + 1 < L ? Math.abs(abu[i + 1] - abu[i]) : 0;
+      const gy = y + 1 < T ? Math.abs(abu[i + L] - abu[i]) : 0;
+      const g = gx + gy;
+      e[i] = g;
+      total += g;
+    }
+  }
+  if (total < 500) return null;          // gambar terlalu rata, belum ada wajah
+
+  let sx = 0, sy = 0;
+  for (let y = 0; y < T; y++) {
+    for (let x = 0; x < L; x++) { const g = e[y * L + x]; sx += x * g; sy += y * g; }
+  }
+  const cx = sx / total, cy = sy / total;
+
+  let vx = 0, vy = 0;
+  for (let y = 0; y < T; y++) {
+    for (let x = 0; x < L; x++) {
+      const g = e[y * L + x];
+      vx += (x - cx) * (x - cx) * g;
+      vy += (y - cy) * (y - cy) * g;
+    }
+  }
+  const sebarX = Math.sqrt(vx / total), sebarY = Math.sqrt(vy / total);
+
+  return { total, cx, cy, sebarX, sebarY };
+}
+
+/**
+ * Persentase piksel berubah, dipisah paruh ATAS dan paruh BAWAH bingkai.
+ *
+ * Inilah pembeda antara membuka mulut dan menggerakkan kepala. Membuka
+ * mulut hanya mengaduk paruh bawah — mata dan dahi tetap di tempatnya.
+ * Menggerakkan kepala mengaduk keduanya kira-kira sama rata. Mengukur
+ * energi pita mulut saja tidak cukup peka; selisih atas-bawah jauh lebih
+ * tegas.
+ */
+function bedaPerParuh(a, b) {
+  if (!a || !b || a.length !== b.length) return { atas: 0, bawah: 0 };
+  let sa = 0, sb = 0;
+  for (let i = 0; i < a.length; i++) { sa += a[i]; sb += b[i]; }
+  const ra = sa / a.length, rb = sb / b.length;
+
+  const L = VERIF.LEBAR, T = VERIF.TINGGI;
+  const batas = Math.floor(T / 2) * L;
+  let nAtas = 0, nBawah = 0;
+  for (let i = 0; i < a.length; i++) {
+    if (Math.abs((a[i] - ra) - (b[i] - rb)) > VERIF.AMBANG_PIKSEL) {
+      if (i < batas) nAtas++; else nBawah++;
+    }
+  }
+  const separuh = a.length / 2;
+  return {
+    atas: Math.round((nAtas / separuh) * 1000) / 10,
+    bawah: Math.round((nBawah / separuh) * 1000) / 10,
+  };
+}
+
+/** Bandingkan ciri sekarang dengan ciri saat wajah masih tenang. */
+function bandingkanCiri(dasar, kini) {
+  const sx = Math.max(dasar.sebarX, 4);   // jaga-jaga pembagian oleh angka kecil
+  const sy = Math.max(dasar.sebarY, 4);
+  return {
+    dx: (kini.cx - dasar.cx) / sx,
+    dy: (kini.cy - dasar.cy) / sy,
+    skala: (kini.sebarX + kini.sebarY) / (dasar.sebarX + dasar.sebarY),
+  };
+}
+
+/**
+ * Satu pemeriksa untuk tiap jenis perintah. Mengembalikan lolos/tidak dan
+ * seberapa dekat gerakannya ke syarat, untuk mengisi bilah kemajuan.
+ *
+ * Arah kiri/kanan sengaja TIDAK diperiksa tandanya. Sebagian HP dan
+ * peramban mencerminkan gambar kamera depan dan sebagian tidak, jadi
+ * menebak arahnya berisiko menolak orang yang sudah menoleh dengan benar.
+ * Yang diperiksa adalah SUMBU gerakannya — menoleh tidak akan lolos oleh
+ * anggukan, dan sebaliknya.
+ */
+const UJI_GERAK = {
+  mendatar(c) {
+    const utama = Math.abs(c.dx), lain = Math.abs(c.dy);
+    return {
+      lolos: cukupBerubah(c) && utama >= VERIF.GESER_MIN && utama >= lain * VERIF.DOMINASI,
+      maju: utama / VERIF.GESER_MIN,
+    };
+  },
+  tegak(c) {
+    const utama = Math.abs(c.dy), lain = Math.abs(c.dx);
+    return {
+      lolos: cukupBerubah(c) && utama >= VERIF.GESER_MIN && utama >= lain * VERIF.DOMINASI,
+      maju: utama / VERIF.GESER_MIN,
+    };
+  },
+  mendekat(c) {
+    return {
+      lolos: cukupBerubah(c) && c.skala >= VERIF.SKALA_MIN,
+      maju: (c.skala - 1) / (VERIF.SKALA_MIN - 1),
+    };
+  },
+  /* Membuka mulut: paruh bawah bergolak jauh lebih kuat daripada paruh
+     atas, dan kepalanya sendiri tidak berpindah. Perintah ini penting
+     dipertahankan — foto cetak bisa digeser, ditengadahkan, dan
+     didekatkan, tetapi tidak bisa membuka mulut.
+
+     Gerbang kasarnya sengaja tidak memakai cukupBerubah(): membuka mulut
+     mengubah bidang yang jauh lebih sempit daripada menggerakkan kepala,
+     jadi syarat besarannya berdiri sendiri di c.bawah. */
+  mulut(c) {
+    const geser = Math.max(Math.abs(c.dx), Math.abs(c.dy));
+    return {
+      lolos: c.bawah >= VERIF.MULUT_MIN
+        && c.bawah >= c.atas * VERIF.MULUT_RASIO
+        && geser <= VERIF.PITA_GESER_MAKS,
+      maju: c.bawah / VERIF.MULUT_MIN,
+    };
+  },
+};
+
+/** Gerbang kasar untuk perintah gerak kepala: harus ada perubahan nyata,
+    bukan sekadar titik berat yang bergoyang karena derau. */
+function cukupBerubah(c) {
+  return Math.max(c.atas, c.bawah) >= AMBANG_GERAK;
+}
+
 /** Tulis teks status di bawah bingkai kamera. */
 function statusVerif(judul, ket, kelas = '') {
   const j = document.getElementById('verifJudul');
@@ -627,9 +795,18 @@ function aturMaju(bagian) {
   isi.style.width = Math.min(100, Math.max(0, bagian * 100)).toFixed(0) + '%';
 }
 
-function ambangTantangan() {
-  const t = S.verif.tantangan;
-  return (t && t.ambang != null) ? t.ambang : AMBANG_GERAK;
+/** Tulis angka mentah pengukuran — hanya aktif di mode diagnostik. */
+function tulisDiagnostik(beda, c, uji) {
+  if (!DIAGNOSTIK) return;
+  const el = document.getElementById('diag');
+  if (!el) return;
+  el.hidden = false;
+  const n = (v) => (v == null ? '—' : (Math.round(v * 100) / 100).toFixed(2));
+  el.textContent = c
+    ? `beda ${n(beda)}%  dx ${n(c.dx)}  dy ${n(c.dy)}  skala ${n(c.skala)}\n`
+      + `atas ${n(c.atas)}%  bawah ${n(c.bawah)}%  maju ${n(uji.maju)}  `
+      + `${uji.lolos ? 'LOLOS' : '—'}`
+    : `beda ${n(beda)}%  (ciri belum terbaca)`;
 }
 
 /** Pindah fase dan sesuaikan seluruh tampilan layar Selfie. */
@@ -689,7 +866,10 @@ function pantauGerak() {
 
   if (v.fase === 'kalibrasi') {
     if (v.diamBerturut >= VERIF.BUTUH_DIAM) {
+      const ciri = ciriFrame(kini);
+      if (!ciri) return;            // wajah belum terbaca, tunggu cuplikan lain
       v.dasar = kini;
+      v.dasarCiri = ciri;
       setFase('menunggu');
     }
     return;
@@ -698,25 +878,38 @@ function pantauGerak() {
   const d = bedaPersen(v.dasar, kini);
   if (d > v.puncak) v.puncak = d;
 
-  // Gerakan harus BERTAHAN beberapa cuplikan. Satu lonjakan sesaat — kamera
-  // menyetel fokus, bayangan lewat — tidak boleh langsung meloloskan.
-  if (d >= ambangTantangan()) {
+  const ciri = ciriFrame(kini);
+  const c = (ciri && v.dasarCiri) ? bandingkanCiri(v.dasarCiri, ciri) : null;
+  if (c) Object.assign(c, bedaPerParuh(v.dasar, kini));
+  const uji = c ? UJI_GERAK[v.tantangan.uji](c) : { lolos: false, maju: 0 };
+  v.ciriTerakhir = c;
+  tulisDiagnostik(d, c, uji);
+
+  // Dua syarat harus terpenuhi sekaligus: perubahannya cukup besar (gerbang
+  // kasar), DAN bentuk gerakannya sesuai perintah. Syarat kedua inilah yang
+  // membuat bergeser sedikit tidak lagi meloloskan perintah menoleh.
+  // Keduanya juga harus BERTAHAN — sentakan sesaat tidak dihitung.
+  if (uji.lolos) {
     v.gerakBerturut++;
-    aturMaju(1);
-    if (v.gerakBerturut >= VERIF.BUTUH_GERAK) setFase('lolos');
+    aturMaju(Math.max(0.55, v.gerakBerturut / VERIF.BUTUH_GERAK));
+    if (v.gerakBerturut >= VERIF.BUTUH_GERAK) { v.lolosCiri = c; setFase('lolos'); }
     return;
   }
   v.gerakBerturut = 0;
-  aturMaju(d / ambangTantangan());
+  aturMaju(Math.min(0.5, uji.maju * 0.5));
 
   // Wajah kembali tenang → pembanding disegarkan ke keadaan tenang yang
   // baru. Inilah yang menahan pergeseran pelan (pencahayaan berangsur
   // berubah, HP sedikit bergeser di tangan) agar tidak menumpuk sampai
   // melewati ambang tanpa pegawai melakukan apa pun.
   if (v.diamBerturut >= VERIF.BUTUH_SEGAR) {
-    v.dasar = kini;
-    v.puncak = 0;
-    aturMaju(0);
+    const segar = ciriFrame(kini);
+    if (segar) {
+      v.dasar = kini;
+      v.dasarCiri = segar;
+      v.puncak = 0;
+      aturMaju(0);
+    }
   }
 }
 
@@ -757,13 +950,23 @@ function ambilFotoPresensi(tombol) {
   const saatFoto = v.dasar ? bedaPersen(v.dasar, contohPiksel()) : null;
   const foto = tangkapFoto();
   const t = v.tantangan;
+  const c = v.lolosCiri || v.ciriTerakhir;
+  const bulat = (x) => (x == null ? null : Math.round(x * 100) / 100);
 
   const verif = {
     tantangan: t.id,
     teks: t.teks,
+    jenisUji: t.uji,
     gerak: v.puncak,
-    ambang: ambangTantangan(),
+    ambang: AMBANG_GERAK,
     saatFoto,
+    // Tanda gerak yang meloloskannya — ini yang bisa diperiksa admin bila
+    // sebuah presensi terasa mencurigakan.
+    geserX: c ? bulat(c.dx) : null,
+    geserY: c ? bulat(c.dy) : null,
+    skala: c ? bulat(c.skala) : null,
+    paruhAtas: c ? bulat(c.atas) : null,
+    paruhBawah: c ? bulat(c.bawah) : null,
     hasil: v.fase === 'lolos' ? 'lolos' : (v.kameraGagal ? 'tanpaKamera' : 'lemah'),
   };
 
