@@ -53,34 +53,19 @@ const AKURASI_MAKS = 100;
    dari rumah. Perintah yang keluar ikut disimpan bersama fotonya, sehingga
    admin bisa memeriksa sendiri apakah wajah di foto benar melakukannya.
 
-   Tiap tantangan menyebut JENIS UJI-nya, bukan sekadar ambang angka.
-   Mengukur "berapa persen piksel berubah" saja tidak cukup: menoleh,
-   membuka mulut, dan sekadar bergeser sedikit sama-sama mengubah piksel,
-   sehingga gerakan apa pun akan meloloskan perintah apa pun. Yang diperiksa
-   sekarang adalah bentuk gerakannya — lihat ciriFrame() di app.js.
+   Bukan satu perintah acak, melainkan DUA LANGKAH BERURUTAN yang arahnya
+   berlawanan: menunduk, lalu menengadah. Urutan ini lebih kuat daripada
+   satu gerakan acak — foto cetak maupun tangkapan layar tidak mungkin
+   melakukan dua gerakan berlawanan secara berurutan, dan menggoyang HP
+   pun tidak, karena tiap langkah masih harus lolos uji rupa wajah.
 
-     mendatar  titik berat wajah berpindah ke samping, jauh lebih besar
-               daripada perpindahan tegaknya
-     tegak     sebaliknya: berpindah naik-turun, bukan ke samping
-     mulut     paruh bawah bingkai teraduk jauh lebih kuat daripada paruh
-               atas, sementara kepalanya sendiri tidak berpindah */
-const TANTANGAN = [
-  { id: 'kanan', teks: 'Tolehkan kepala ke kanan', ikon: 'chevron', uji: 'mendatar' },
-  { id: 'kiri', teks: 'Tolehkan kepala ke kiri', ikon: 'chevron-left', uji: 'mendatar' },
-  { id: 'atas', teks: 'Tengadahkan kepala ke atas', ikon: 'chevron-up', uji: 'tegak' },
-  { id: 'bawah', teks: 'Tundukkan kepala ke bawah', ikon: 'chevron-down', uji: 'tegak' },
-  { id: 'mulut', teks: 'Buka mulut lebar-lebar', ikon: 'mulut', uji: 'mulut' },
+   Langkah kedua diukur terhadap posisi netral di awal, bukan terhadap
+   posisi menunduk. Jadi pegawai benar-benar harus melewati titik netral
+   dan naik ke sisi seberangnya — sekadar kembali tegak tidak cukup. */
+const URUTAN_VERIFIKASI = [
+  { id: 'bawah', teks: 'Tundukkan kepala ke bawah', ikon: 'chevron-down' },
+  { id: 'atas', teks: 'Tengadahkan kepala ke atas', ikon: 'chevron-up' },
 ];
-
-/** Undi satu tantangan. Sengaja Math.random, bukan RNG deterministik —
-    justru tidak boleh bisa ditebak. */
-function pilihTantangan() {
-  return TANTANGAN[Math.floor(Math.random() * TANTANGAN.length)];
-}
-
-/** Gerbang kasar: perubahan piksel minimum sebelum tanda gerak diperiksa.
-    Menahan getaran halus dan derau sensor agar tidak sempat dihitung. */
-const AMBANG_GERAK = 8;
 
 const PROFIL = {
   nama: 'Budi Santoso',

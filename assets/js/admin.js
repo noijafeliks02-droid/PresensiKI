@@ -503,13 +503,10 @@ function labelVerifikasi(v) {
  * pita tanpa kepala berpindah, dan seterusnya.
  */
 function tandaGerak(v) {
-  if (!v) return '—';
-  const p = [];
-  if (v.geserX != null) p.push(`geser ↔ ${v.geserX}`);
-  if (v.geserY != null) p.push(`geser ↕ ${v.geserY}`);
-  if (v.skala != null) p.push(`skala ${v.skala}`);
-  if (v.paruhBawah != null) p.push(`atas ${v.paruhAtas}% / bawah ${v.paruhBawah}%`);
-  return p.length ? `<span class="mono">${p.join(' · ')}</span>` : '—';
+  if (!v || !Array.isArray(v.langkah) || !v.langkah.length) return '—';
+  return v.langkah.map((l, i) =>
+    `<div class="mono" style="font-size:12px">${i + 1}. ${esc(l.teks)} —
+      geser ↕ ${l.geserY}, sisa ${l.sisa}%</div>`).join('');
 }
 
 /** Ada tahap yang lolos tanpa gerakan meyakinkan? */
@@ -566,16 +563,12 @@ function dialogBukti(pegawaiId) {
         : (dalam
           ? '<span class="chip chip-green">Dalam radius</span>'
           : '<span class="chip chip-red">Di luar radius</span>')],
-      ['Perintah Gerak', verif && verif.teks ? esc(verif.teks) : '—'],
+      ['Urutan Gerak', verif && verif.teks ? esc(verif.teks) : '—'],
       ['Hasil Verifikasi', `<span class="chip ${lv.chip}">${lv.teks}</span>`],
-      ['Gerak Tertinggi', verif && verif.gerak != null
-        ? `<span class="mono">${verif.gerak}%</span>${verif.ambang != null
-          ? ` <span style="color:var(--mut);font-weight:600">(min ${verif.ambang}%)</span>` : ''}`
-        : '—'],
       ['Saat Difoto', verif && verif.saatFoto != null
         ? `<span class="mono">${verif.saatFoto}%</span>` : '—'],
-      // Tanda gerak: inilah yang membedakan menoleh dari sekadar bergeser.
-      ['Tanda Gerak', tandaGerak(verif)],
+      // Rekaman tiap langkah — arah geraknya harus berlawanan.
+      ['Rekaman Langkah', tandaGerak(verif)],
     ];
   };
 

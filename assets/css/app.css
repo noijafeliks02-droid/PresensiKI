@@ -398,6 +398,11 @@
   animation: fadeIn .18s ease both;
 }
 .selfie-tengah .aba-ikon { display: flex; flex: none; }
+.selfie-tengah .aba-nomor {
+  margin-top: 9px; font-size: 11px; font-weight: 800;
+  letter-spacing: 1.1px; text-transform: uppercase;
+  color: rgba(255, 255, 255, .45);
+}
 
 /* Bilah kemajuan gerak — tanpa angka, hanya isyarat bahwa gerakannya
    sedang terbaca. Menampilkan persentasenya sama saja dengan memberi tahu

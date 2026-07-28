@@ -33,7 +33,10 @@ const S = {
 function kosongkanVerif() {
   return {
     fase: 'kalibrasi',   // kalibrasi → menunggu → lolos | lewat
-    tantangan: null,
+    langkah: 0,          // 0 = menunduk, 1 = menengadah
+    arah1: 0,            // arah tegak langkah pertama; langkah kedua wajib lawannya
+    hasilLangkah: [],    // geseran yang meloloskan tiap langkah, untuk bukti admin
+    beku: false,         // pembanding dibekukan begitu langkah pertama lolos
     dasar: null,         // contoh piksel saat wajah masih diam
     terakhir: null,
     dasarCiri: null,     // tanda wajah saat tenang — pembanding bentuk gerakan
@@ -454,6 +457,7 @@ function layarSelfie() {
         <span class="aba-ikon" id="abaIkon"></span>
         <span class="aba-teks" id="abaTeks"></span>
       </div>
+      <div class="aba-nomor" id="abaNomor"></div>
 
       <!-- Bilah kemajuan tanpa angka. Pegawai perlu tahu gerakannya sedang
            terbaca, tetapi menampilkan persentasenya sama saja dengan
@@ -821,16 +825,6 @@ function bandingkanCiri(dasar, kini, geser) {
 }
 
 /**
- * Satu pemeriksa untuk tiap jenis perintah. Mengembalikan lolos/tidak dan
- * seberapa dekat gerakannya ke syarat, untuk mengisi bilah kemajuan.
- *
- * Arah kiri/kanan sengaja TIDAK diperiksa tandanya. Sebagian HP dan
- * peramban mencerminkan gambar kamera depan dan sebagian tidak, jadi
- * menebak arahnya berisiko menolak orang yang sudah menoleh dengan benar.
- * Yang diperiksa adalah SUMBU gerakannya — menoleh tidak akan lolos oleh
- * anggukan, dan sebaliknya.
- */
-/**
  * Kemajuan gabungan dari beberapa syarat.
  *
  * Bilah kemajuan HARUS mencerminkan syarat yang paling tertinggal, bukan
@@ -843,63 +837,42 @@ function majuGabungan(...bagian) {
 }
 
 /**
- * Uji satu sumbu gerakan.
+ * Uji satu langkah gerakan tegak — menunduk atau menengadah.
  *
- * Besar dan arahnya diambil dari GESERAN yang terdeteksi, bukan dari
- * perpindahan titik berat. Menoleh sungguhan menggeser rupa wajah ke satu
- * arah, dan geseran itulah yang paling jelas terukur.
+ * Besar dan arahnya diambil dari GESERAN rupa wajah yang terdeteksi, bukan
+ * dari perpindahan titik berat: titik berat terlalu mudah terkecoh latar
+ * berpola dan wajah yang terpotong tepi bingkai.
  *
- * Yang membedakannya dari HP yang digoyang adalah `sisa`: goyangan HP
+ * Yang membedakannya dari HP yang digoyang adalah `sisa`. Goyangan HP
  * memindahkan gambar tanpa mengubahnya, sehingga digeser balik ia kembali
  * cocok dan sisanya nol. Wajah yang berputar tidak akan pernah cocok lagi.
+ *
+ * @param arahWajib  0 = arah mana pun (langkah pertama);
+ *                   +1/-1 = wajib ke arah itu (langkah kedua, berlawanan)
  */
-function ujiSumbu(utama, lain, c) {
+function ujiLangkah(c, arahWajib = 0) {
   // Geseran sebesar jangkauan pencarian berarti gambarnya berpindah sangat
-  // jauh — hampir pasti HP-nya yang diayun, bukan kepala yang menoleh.
+  // jauh — hampir pasti HP-nya yang diayun, bukan kepala yang bergerak.
   if (Math.max(Math.abs(c.geserX), Math.abs(c.geserY)) >= VERIF.JANGKAU) {
     return { lolos: false, maju: 0 };
   }
-  const cukupJauh = utama / VERIF.GESER_PIKSEL_MIN;
-  const cukupSearah = lain > 0 ? utama / (lain * VERIF.SUMBU_MIN) : 1;
+
+  // Arah tegak yang salah tidak boleh dihitung sama sekali — bukan sekadar
+  // kurang. Kalau tidak, kembali dari menunduk ke netral akan terbaca
+  // sebagai langkah kedua yang berhasil.
+  const tegakBerarah = arahWajib === 0 ? Math.abs(c.geserY) : c.geserY * arahWajib;
+  if (tegakBerarah <= 0) return { lolos: false, maju: 0 };
+
+  const cukupJauh = tegakBerarah / VERIF.GESER_PIKSEL_MIN;
+  const mendatar = Math.abs(c.geserX);
+  const cukupTegak = mendatar > 0 ? tegakBerarah / (mendatar * VERIF.SUMBU_MIN) : 1;
   const cukupNyata = c.sisa / VERIF.SISA_MIN;
+
   return {
-    lolos: cukupJauh >= 1 && cukupSearah >= 1 && cukupNyata >= 1,
-    maju: majuGabungan(cukupJauh, cukupSearah, cukupNyata),
+    lolos: cukupJauh >= 1 && cukupTegak >= 1 && cukupNyata >= 1,
+    maju: majuGabungan(cukupJauh, cukupTegak, cukupNyata),
   };
 }
-
-const UJI_GERAK = {
-  mendatar: (c) => ujiSumbu(Math.abs(c.geserX), Math.abs(c.geserY), c),
-  tegak: (c) => ujiSumbu(Math.abs(c.geserY), Math.abs(c.geserX), c),
-  /* Perintah "dekatkan wajah ke kamera" sudah DIHAPUS. Pada selfie HP
-     wajah biasanya sudah memenuhi bingkai, sehingga mendekat tidak lagi
-     membesarkan sebarannya — yang keluar bingkai sebanyak yang masuk.
-     Pengukuran menunjukkan skalanya hanya naik ke 1,02 padahal wajahnya
-     jelas mendekat. Lebih baik perintahnya ditiadakan daripada dipaksakan
-     dengan ambang yang rapuh dan membuat pegawai tertahan. */
-
-  /* Membuka mulut: paruh bawah bergolak jauh lebih kuat daripada paruh
-     atas, dan kepalanya sendiri tidak berpindah. Perintah ini penting
-     dipertahankan — foto cetak bisa digeser, ditengadahkan, dan
-     didekatkan, tetapi tidak bisa membuka mulut.
-
-     Gerbang kasarnya sengaja tidak memakai cukupBerubah(): membuka mulut
-     mengubah bidang yang jauh lebih sempit daripada menggerakkan kepala,
-     jadi syarat besarannya berdiri sendiri di c.bawah. */
-  mulut(c) {
-    // Kepala harus diam: geseran rupa wajah nyaris nol, hanya mulutnya
-    // yang berubah.
-    const geser = Math.max(Math.abs(c.geserX), Math.abs(c.geserY));
-    const cukupKuat = c.bawah / VERIF.MULUT_MIN;
-    const cukupTerpusat = c.atas > 0.01 ? (c.bawah / c.atas) / VERIF.MULUT_RASIO : 1;
-    const kepalaDiam = geser > 0.0001 ? VERIF.PITA_GESER_MAKS / geser : 1;
-    const cukupNyata = c.sisa / VERIF.SISA_MIN;
-    return {
-      lolos: cukupKuat >= 1 && cukupTerpusat >= 1 && kepalaDiam >= 1 && cukupNyata >= 1,
-      maju: majuGabungan(cukupKuat, cukupTerpusat, kepalaDiam, cukupNyata),
-    };
-  },
-};
 
 /** Tulis teks status di bawah bingkai kamera. */
 function statusVerif(judul, ket, kelas = '') {
@@ -909,12 +882,21 @@ function statusVerif(judul, ket, kelas = '') {
   if (k) k.textContent = ket;
 }
 
-function tampilAbaAba(t) {
+/** Tampilkan perintah untuk langkah ke-n beserta penomorannya. */
+function tampilAbaAba(n) {
   const aba = document.getElementById('aba');
   if (!aba) return;
+  const t = URUTAN_VERIFIKASI[n];
   document.getElementById('abaIkon').innerHTML = icon(t.ikon, 21, 'currentColor', 2.6);
   document.getElementById('abaTeks').textContent = t.teks;
+  const no = document.getElementById('abaNomor');
+  if (no) no.textContent = `Langkah ${n + 1} dari ${URUTAN_VERIFIKASI.length}`;
   aba.hidden = false;
+}
+
+/** Perintah yang sedang berlaku. */
+function langkahKini() {
+  return URUTAN_VERIFIKASI[Math.min(S.verif.langkah, URUTAN_VERIFIKASI.length - 1)];
 }
 
 /** Isi bilah kemajuan, 0–1. Sengaja tanpa angka. */
@@ -949,12 +931,11 @@ function tulisDiagnostik(beda, c, uji) {
   const n = (x, d = 2) => (Math.round(x * 10 ** d) / 10 ** d).toFixed(d);
   el.hidden = false;
   el.textContent =
-    `${v.tantangan.id} · ${v.tantangan.uji} · maju ${n(uji.maju)} ${uji.lolos ? 'LOLOS' : ''}\n`
-    + `dx ${n(c.dx)} pk ${n(v.puncakDx)}/${VERIF.GESER_MIN}   `
-    + `dy ${n(c.dy)} pk ${n(v.puncakDy)}/${VERIF.GESER_MIN}\n`
-    + `geserHP ${c.geserX},${c.geserY}   `
-    + `sisa ${n(c.sisa, 1)} pk ${n(v.puncakSisa, 1)}/${VERIF.SISA_MIN}\n`
-    + `atas ${n(c.atas, 0)}   bawah ${n(c.bawah, 0)}/${VERIF.MULUT_MIN}`;
+    `langkah ${v.langkah + 1} · ${langkahKini().id} · `
+    + `maju ${n(uji.maju)} ${uji.lolos ? 'LOLOS' : ''}\n`
+    + `geser wajah  x ${c.geserX}   y ${c.geserY}/${VERIF.GESER_PIKSEL_MIN}\n`
+    + `sisa ${n(c.sisa, 1)} pk ${n(v.puncakSisa, 1)}/${VERIF.SISA_MIN}   `
+    + `arah1 ${v.arah1 || '-'}`;
 }
 
 /** Pindah fase dan sesuaikan seluruh tampilan layar Selfie. */
@@ -974,7 +955,9 @@ function setFase(f) {
     statusVerif('Menyiapkan verifikasi…', 'Tatap kamera dan diam sejenak.');
   } else if (f === 'menunggu') {
     statusVerif('Lakukan perintah di atas',
-      'Tombol foto terbuka begitu gerakan Anda terbaca.');
+      v.langkah === 0
+        ? 'Ada dua langkah. Lakukan berurutan, jangan gerakkan HP-nya.'
+        : 'Langkah pertama selesai. Tinggal satu lagi.');
   } else if (f === 'lolos') {
     statusVerif('Gerakan terverifikasi',
       'Tahan posisinya, lalu tekan tombol untuk mengambil foto.', 'lolos');
@@ -1046,7 +1029,12 @@ function pantauGerak() {
   const ciri = ciriFrame(kini);
   const c = (ciri && v.dasarCiri) ? bandingkanCiri(v.dasarCiri, ciri, geser) : null;
   if (c) Object.assign(c, bedaPerParuh(v.dasar, kini));
-  const uji = c ? UJI_GERAK[v.tantangan.uji](c) : { lolos: false, maju: 0 };
+  // Langkah pertama menerima arah tegak mana pun; langkah kedua WAJIB
+  // berlawanan dengannya. Tandanya tidak dipatok di kode karena sebagian
+  // HP mencerminkan gambar kamera depan dan sebagian tidak — yang dijaga
+  // adalah keberlawanannya, dan itu tidak bergantung pada pencerminan.
+  const arahWajib = v.langkah === 0 ? 0 : -v.arah1;
+  const uji = c ? ujiLangkah(c, arahWajib) : { lolos: false, maju: 0 };
   v.ciriTerakhir = c;
   tulisDiagnostik(d, c, uji);
 
@@ -1056,7 +1044,7 @@ function pantauGerak() {
   if (c && Math.hypot(c.geserX, c.geserY) >= VERIF.GOYANG_HP && c.sisa < VERIF.SISA_MIN) {
     statusVerif('Tahan HP Anda', 'Yang perlu bergerak wajahnya, bukan kameranya.', 'gagal');
   } else if (v.fase === 'menunggu') {
-    statusVerif('Lakukan perintah di atas', 'Tombol foto terbuka begitu gerakan Anda terbaca.');
+    setFase('menunggu');
   }
 
   // Semua syarat harus terpenuhi sekaligus — besar gerakan, arahnya, dan
@@ -1065,7 +1053,7 @@ function pantauGerak() {
   if (uji.lolos) {
     v.gerakBerturut++;
     aturMaju(Math.max(0.55, v.gerakBerturut / VERIF.BUTUH_GERAK));
-    if (v.gerakBerturut >= VERIF.BUTUH_GERAK) { v.lolosCiri = c; setFase('lolos'); }
+    if (v.gerakBerturut >= VERIF.BUTUH_GERAK) selesaikanLangkah(c);
     return;
   }
   v.gerakBerturut = 0;
@@ -1078,7 +1066,11 @@ function pantauGerak() {
   // baru. Inilah yang menahan pergeseran pelan (pencahayaan berangsur
   // berubah, HP sedikit bergeser di tangan) agar tidak menumpuk sampai
   // melewati ambang tanpa pegawai melakukan apa pun.
-  if (v.diamBerturut >= VERIF.BUTUH_SEGAR) {
+  //
+  // Setelah langkah pertama lolos pembandingnya DIBEKUKAN: kalau tidak,
+  // menahan posisi menunduk akan membuat posisi itu menjadi netral yang
+  // baru, dan langkah kedua kehilangan titik acuannya.
+  if (!v.beku && v.diamBerturut >= VERIF.BUTUH_SEGAR) {
     const segar = ciriFrame(kini);
     if (segar) {
       v.dasar = kini;
@@ -1090,21 +1082,48 @@ function pantauGerak() {
   }
 }
 
+/** Satu langkah tuntas: lanjut ke langkah berikutnya, atau selesai. */
+function selesaikanLangkah(c) {
+  const v = S.verif;
+  v.hasilLangkah.push({
+    id: langkahKini().id,
+    teks: langkahKini().teks,
+    geserY: c.geserY,
+    geserX: c.geserX,
+    sisa: Math.round(c.sisa * 10) / 10,
+  });
+
+  if (v.langkah === 0) {
+    v.arah1 = Math.sign(c.geserY);
+    v.beku = true;               // netral awal dikunci sebagai acuan langkah 2
+    v.langkah = 1;
+    v.gerakBerturut = 0;
+    v.puncakDy = 0;
+    tampilAbaAba(1);
+    aturMaju(0);
+    setFase('menunggu');
+    toast('Langkah 1 selesai.');
+    return;
+  }
+
+  v.lolosCiri = c;
+  setFase('lolos');
+}
+
 function hentikanPantau() {
   if (S.verif.timer) { clearInterval(S.verif.timer); S.verif.timer = null; }
 }
 
-/** Siapkan layar Selfie: undi perintah, tampilkan, lalu mulai memantau. */
+/** Siapkan layar Selfie: tampilkan langkah pertama, lalu mulai memantau. */
 function siapkanVerifikasi() {
   hentikanPantau();
   // Dipanggil tepat setelah nyalakanKamera(). Fungsi itu menunggu izin
   // kamera, jadi penandaan gagalnya baru tiba setelah baris-baris ini —
   // aman untuk memulai dari keadaan bersih.
   S.verif = kosongkanVerif();
-  S.verif.tantangan = pilihTantangan();
   S.verif.mulai = Date.now();
 
-  tampilAbaAba(S.verif.tantangan);
+  tampilAbaAba(0);
   setFase('kalibrasi');
   aturMaju(0);
   S.verif.timer = setInterval(pantauGerak, VERIF.JEDA);
@@ -1126,24 +1145,14 @@ function ambilFotoPresensi(tombol) {
   // kembali ke posisi netral, angkanya kecil dan admin bisa melihatnya.
   const saatFoto = v.dasar ? bedaPersen(v.dasar, contohPiksel()) : null;
   const foto = tangkapFoto();
-  const t = v.tantangan;
-  const c = v.lolosCiri || v.ciriTerakhir;
-  const bulat = (x) => (x == null ? null : Math.round(x * 100) / 100);
 
   const verif = {
-    tantangan: t.id,
-    teks: t.teks,
-    jenisUji: t.uji,
+    teks: URUTAN_VERIFIKASI.map(t => t.teks).join(' → '),
     gerak: v.puncak,
-    ambang: AMBANG_GERAK,
     saatFoto,
-    // Tanda gerak yang meloloskannya — ini yang bisa diperiksa admin bila
-    // sebuah presensi terasa mencurigakan.
-    geserX: c ? bulat(c.dx) : null,
-    geserY: c ? bulat(c.dy) : null,
-    skala: c ? bulat(c.skala) : null,
-    paruhAtas: c ? bulat(c.atas) : null,
-    paruhBawah: c ? bulat(c.bawah) : null,
+    // Rekaman tiap langkah — inilah yang bisa diperiksa admin bila sebuah
+    // presensi terasa mencurigakan.
+    langkah: v.hasilLangkah,
     hasil: v.fase === 'lolos' ? 'lolos' : (v.kameraGagal ? 'tanpaKamera' : 'lemah'),
   };
 
