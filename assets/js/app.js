@@ -37,6 +37,7 @@ function kosongkanVerif() {
     dasar: null,         // contoh piksel saat wajah masih diam
     terakhir: null,
     dasarCiri: null,     // tanda wajah saat tenang — pembanding bentuk gerakan
+    dasarNorm: null,     // cuplikan tenang yang sudah dinormalkan, untuk cariGeseran
     ciriTerakhir: null,
     lolosCiri: null,     // tanda gerak pada saat perintahnya dinyatakan lolos
     diamBerturut: 0,
@@ -553,18 +554,7 @@ const VERIF = {
   /* Ambang tanda gerak. Satuannya RELATIF terhadap ukuran wajah pengguna
      sendiri, bukan piksel layar — dengan begitu ambangnya tidak berubah
      mengikuti jarak wajah ke kamera maupun resolusi HP. */
-  /* Disetel dari pengukuran wajah yang MEMENUHI bingkai — keadaan
-     sebenarnya pada selfie HP. Di situ menoleh sungguhan menggeser titik
-     berat sekitar 0,23 satuan dan menunduk sekitar 0,15, sedangkan
-     bergeser tak sengaja hanya 0,03–0,07. Ambang 0,30 yang dipakai
-     sebelumnya berada di atas gerakan yang benar sekalipun, sehingga
-     bilah kemajuannya tidak pernah sampai penuh.
-
-     Gerakan kecil tetap tertahan oleh cukupBerubah(): pada wajah yang
-     memenuhi bingkai, bergeser menyamping justru hampir tidak memindahkan
-     titik berat, sedangkan pada wajah kecil perubahan pikselnya belum
-     mencapai gerbang kasar. Keduanya saling menutup. */
-  GESER_MIN: 0.14,         // perpindahan titik berat, dalam satuan sebaran wajah
+  GESER_PIKSEL_MIN: 3,     // geseran rupa wajah, dalam piksel cuplikan 64×80
 
   /* Sumbu yang diminta harus mencapai sekian kali sumbu satunya.
      Semula 1,5 — menuntut gerakan lurus pada satu sumbu saja. Pengukuran
@@ -583,7 +573,11 @@ const VERIF = {
      mengaduk kedua paruh hampir sama rata (45 lawan 40). */
   MULUT_MIN: 10,           // persen piksel berubah di paruh bawah
   MULUT_RASIO: 2.2,        // paruh bawah harus sekian kali paruh atas
-  PITA_GESER_MAKS: 0.20,   // mulut dibuka TANPA kepala ikut berpindah
+  PITA_GESER_MAKS: 2,      // piksel; mulut dibuka TANPA kepala ikut berpindah
+
+  JANGKAU: 12,             // piksel pencarian geseran gambar ke tiap arah
+  SISA_MIN: 6,             // persen perubahan yang TIDAK terjelaskan geseran
+  GOYANG_HP: 3,            // geseran sebesar ini dianggap HP-nya yang bergerak
 };
 
 /** Mode diagnostik: buka halaman dengan ?diagnostik untuk melihat angkanya. */
@@ -620,6 +614,76 @@ function contohPiksel() {
     abu[j] = (d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000;
   }
   return abu;
+}
+
+/* ------------------------------------------------------------
+   Pemisah gerakan kamera dari gerakan wajah
+   ------------------------------------------------------------
+   Menggoyang HP memindahkan SELURUH isi bingkai, persis seperti wajah
+   yang bergerak — dari pikselnya keduanya tampak sama. Pembedanya begini:
+
+     menggoyang HP     seluruh gambar bergeser utuh; kalau digeser balik,
+                       ia kembali cocok dengan gambar semula
+     menggerakkan wajah rupa wajahnya sendiri berubah — hidung berpindah
+                       terhadap mata, satu pipi tersembunyi, mulut membuka.
+                       Digeser ke mana pun, ia tidak akan pernah cocok lagi
+
+   Jadi dicari dulu geseran terbaik yang membuat kedua cuplikan paling
+   mirip. Sisa perbedaan SETELAH digeser itulah perubahan yang benar-benar
+   berasal dari wajah. Geserannya sendiri dipakai untuk mengoreksi
+   perpindahan titik berat, sehingga goyangan HP tidak lagi terhitung.
+   ------------------------------------------------------------ */
+
+/** Kurangi tiap piksel dengan rata-ratanya, agar kebal perubahan cahaya. */
+function normalkan(a) {
+  let s = 0;
+  for (let i = 0; i < a.length; i++) s += a[i];
+  const rata = s / a.length;
+  const out = new Int16Array(a.length);
+  for (let i = 0; i < a.length; i++) out[i] = a[i] - rata;
+  return out;
+}
+
+/** Persen piksel berbeda bila b digeser (sx, sy), dibatasi satu wilayah. */
+function selisihGeser(a, b, sx, sy, w) {
+  const L = VERIF.LEBAR;
+  const x0 = Math.max(w.x0, w.x0 - sx), x1 = Math.min(w.x1, w.x1 - sx);
+  const y0 = Math.max(w.y0, w.y0 - sy), y1 = Math.min(w.y1, w.y1 - sy);
+  if (x1 <= x0 || y1 <= y0) return 100;
+
+  let beda = 0, jumlah = 0;
+  for (let y = y0; y < y1; y++) {
+    const barisA = y * L, barisB = (y + sy) * L + sx;
+    for (let x = x0; x < x1; x++) {
+      if (Math.abs(a[barisA + x] - b[barisB + x]) > VERIF.AMBANG_PIKSEL) beda++;
+      jumlah++;
+    }
+  }
+  return (beda / jumlah) * 100;
+}
+
+const SELURUH = { x0: 0, y0: 0, x1: VERIF.LEBAR, y1: VERIF.TINGGI };
+const AREA_WAJAH = {
+  x0: Math.round(VERIF.LEBAR * 0.20), x1: Math.round(VERIF.LEBAR * 0.80),
+  y0: Math.round(VERIF.TINGGI * 0.20), y1: Math.round(VERIF.TINGGI * 0.80),
+};
+
+/**
+ * Cari geseran yang paling mencocokkan kedua cuplikan pada satu wilayah.
+ * Dua tahap — kasar lalu halus — agar tetap ringan dijalankan tiap 140 ms.
+ * @returns { sx, sy, sisa } sisa = persen beda yang TIDAK terjelaskan geseran
+ */
+function cariGeseran(a, b, w = SELURUH) {
+  let terbaik = { sx: 0, sy: 0, sisa: selisihGeser(a, b, 0, 0, w) };
+  const coba = (sx, sy) => {
+    const s = selisihGeser(a, b, sx, sy, w);
+    if (s < terbaik.sisa) terbaik = { sx, sy, sisa: s };
+  };
+  const J = VERIF.JANGKAU;
+  for (let sy = -J; sy <= J; sy += 2) for (let sx = -J; sx <= J; sx += 2) coba(sx, sy);
+  const { sx: kx, sy: ky } = terbaik;
+  for (let sy = ky - 1; sy <= ky + 1; sy++) for (let sx = kx - 1; sx <= kx + 1; sx++) coba(sx, sy);
+  return terbaik;
 }
 
 /** Simpangan baku kecerahan — dipakai menolak gambar yang masih kosong. */
@@ -733,14 +797,26 @@ function bedaPerParuh(a, b) {
   };
 }
 
-/** Bandingkan ciri sekarang dengan ciri saat wajah masih tenang. */
-function bandingkanCiri(dasar, kini) {
+/**
+ * Bandingkan ciri sekarang dengan ciri saat wajah masih tenang.
+ *
+ * `geser` adalah perpindahan seluruh gambar yang terdeteksi — biasanya
+ * karena HP-nya yang bergoyang. Perpindahan itu DIKURANGKAN dari
+ * perpindahan titik berat, sehingga yang tersisa hanyalah gerakan wajah
+ * relatif terhadap bingkainya sendiri.
+ */
+function bandingkanCiri(dasar, kini, geser) {
   const sx = Math.max(dasar.sebarX, 4);   // jaga-jaga pembagian oleh angka kecil
   const sy = Math.max(dasar.sebarY, 4);
+  const gx = geser ? geser.sx : 0;
+  const gy = geser ? geser.sy : 0;
   return {
-    dx: (kini.cx - dasar.cx) / sx,
-    dy: (kini.cy - dasar.cy) / sy,
+    dx: (kini.cx - dasar.cx - gx) / sx,
+    dy: (kini.cy - dasar.cy - gy) / sy,
     skala: (kini.sebarX + kini.sebarY) / (dasar.sebarX + dasar.sebarY),
+    geserX: gx,
+    geserY: gy,
+    sisa: geser ? geser.sisa : 0,
   };
 }
 
@@ -766,19 +842,35 @@ function majuGabungan(...bagian) {
   return Math.min(...bagian.map(x => (isFinite(x) ? Math.max(0, x) : 1)));
 }
 
+/**
+ * Uji satu sumbu gerakan.
+ *
+ * Besar dan arahnya diambil dari GESERAN yang terdeteksi, bukan dari
+ * perpindahan titik berat. Menoleh sungguhan menggeser rupa wajah ke satu
+ * arah, dan geseran itulah yang paling jelas terukur.
+ *
+ * Yang membedakannya dari HP yang digoyang adalah `sisa`: goyangan HP
+ * memindahkan gambar tanpa mengubahnya, sehingga digeser balik ia kembali
+ * cocok dan sisanya nol. Wajah yang berputar tidak akan pernah cocok lagi.
+ */
 function ujiSumbu(utama, lain, c) {
-  const cukupJauh = utama / VERIF.GESER_MIN;
-  const cukupSearah = lain > 0.0001 ? utama / (lain * VERIF.SUMBU_MIN) : 1;
-  const cukupKuat = Math.max(c.atas, c.bawah) / AMBANG_GERAK;
+  // Geseran sebesar jangkauan pencarian berarti gambarnya berpindah sangat
+  // jauh — hampir pasti HP-nya yang diayun, bukan kepala yang menoleh.
+  if (Math.max(Math.abs(c.geserX), Math.abs(c.geserY)) >= VERIF.JANGKAU) {
+    return { lolos: false, maju: 0 };
+  }
+  const cukupJauh = utama / VERIF.GESER_PIKSEL_MIN;
+  const cukupSearah = lain > 0 ? utama / (lain * VERIF.SUMBU_MIN) : 1;
+  const cukupNyata = c.sisa / VERIF.SISA_MIN;
   return {
-    lolos: cukupJauh >= 1 && cukupSearah >= 1 && cukupKuat >= 1,
-    maju: majuGabungan(cukupJauh, cukupSearah, cukupKuat),
+    lolos: cukupJauh >= 1 && cukupSearah >= 1 && cukupNyata >= 1,
+    maju: majuGabungan(cukupJauh, cukupSearah, cukupNyata),
   };
 }
 
 const UJI_GERAK = {
-  mendatar: (c) => ujiSumbu(Math.abs(c.dx), Math.abs(c.dy), c),
-  tegak: (c) => ujiSumbu(Math.abs(c.dy), Math.abs(c.dx), c),
+  mendatar: (c) => ujiSumbu(Math.abs(c.geserX), Math.abs(c.geserY), c),
+  tegak: (c) => ujiSumbu(Math.abs(c.geserY), Math.abs(c.geserX), c),
   /* Perintah "dekatkan wajah ke kamera" sudah DIHAPUS. Pada selfie HP
      wajah biasanya sudah memenuhi bingkai, sehingga mendekat tidak lagi
      membesarkan sebarannya — yang keluar bingkai sebanyak yang masuk.
@@ -795,13 +887,16 @@ const UJI_GERAK = {
      mengubah bidang yang jauh lebih sempit daripada menggerakkan kepala,
      jadi syarat besarannya berdiri sendiri di c.bawah. */
   mulut(c) {
-    const geser = Math.max(Math.abs(c.dx), Math.abs(c.dy));
+    // Kepala harus diam: geseran rupa wajah nyaris nol, hanya mulutnya
+    // yang berubah.
+    const geser = Math.max(Math.abs(c.geserX), Math.abs(c.geserY));
     const cukupKuat = c.bawah / VERIF.MULUT_MIN;
     const cukupTerpusat = c.atas > 0.01 ? (c.bawah / c.atas) / VERIF.MULUT_RASIO : 1;
     const kepalaDiam = geser > 0.0001 ? VERIF.PITA_GESER_MAKS / geser : 1;
+    const cukupNyata = c.sisa / VERIF.SISA_MIN;
     return {
-      lolos: cukupKuat >= 1 && cukupTerpusat >= 1 && kepalaDiam >= 1,
-      maju: majuGabungan(cukupKuat, cukupTerpusat, kepalaDiam),
+      lolos: cukupKuat >= 1 && cukupTerpusat >= 1 && kepalaDiam >= 1 && cukupNyata >= 1,
+      maju: majuGabungan(cukupKuat, cukupTerpusat, kepalaDiam, cukupNyata),
     };
   },
 };
@@ -849,6 +944,7 @@ function tulisDiagnostik(beda, c, uji) {
   v.puncakSkala = Math.max(v.puncakSkala || 1, c.skala);
   v.puncakBawah = Math.max(v.puncakBawah || 0, c.bawah);
   v.puncakAtas = Math.max(v.puncakAtas || 0, c.atas);
+  v.puncakSisa = Math.max(v.puncakSisa || 0, c.sisa);
 
   const n = (x, d = 2) => (Math.round(x * 10 ** d) / 10 ** d).toFixed(d);
   el.hidden = false;
@@ -856,8 +952,9 @@ function tulisDiagnostik(beda, c, uji) {
     `${v.tantangan.id} · ${v.tantangan.uji} · maju ${n(uji.maju)} ${uji.lolos ? 'LOLOS' : ''}\n`
     + `dx ${n(c.dx)} pk ${n(v.puncakDx)}/${VERIF.GESER_MIN}   `
     + `dy ${n(c.dy)} pk ${n(v.puncakDy)}/${VERIF.GESER_MIN}\n`
-    + `atas ${n(c.atas, 0)} pk ${n(v.puncakAtas, 0)}   `
-    + `bawah ${n(c.bawah, 0)} pk ${n(v.puncakBawah, 0)}/${VERIF.MULUT_MIN}`;
+    + `geserHP ${c.geserX},${c.geserY}   `
+    + `sisa ${n(c.sisa, 1)} pk ${n(v.puncakSisa, 1)}/${VERIF.SISA_MIN}\n`
+    + `atas ${n(c.atas, 0)}   bawah ${n(c.bawah, 0)}/${VERIF.MULUT_MIN}`;
 }
 
 /** Pindah fase dan sesuaikan seluruh tampilan layar Selfie. */
@@ -921,6 +1018,7 @@ function pantauGerak() {
       if (!ciri) return;            // wajah belum terbaca, tunggu cuplikan lain
       v.dasar = kini;
       v.dasarCiri = ciri;
+      v.dasarNorm = normalkan(kini);
       setFase('menunggu');
     }
     return;
@@ -929,17 +1027,41 @@ function pantauGerak() {
   const d = bedaPersen(v.dasar, kini);
   if (d > v.puncak) v.puncak = d;
 
+  /* Dua pengukuran, dua peran.
+
+     `sisaSeluruh` dihitung dari SELURUH bingkai: bila seluruh gambar hanya
+     bergeser — HP yang digoyang — ia akan kembali cocok setelah digeser
+     balik, dan sisanya nol. Wajah yang berputar tidak pernah cocok lagi.
+
+     Arahnya diambil dari AREA WAJAH saja. Pada latar berpola, geseran
+     seluruh bingkai terkunci ke latar yang diam sehingga arah gerak wajah
+     hilang; mengukurnya di area wajah membuatnya tetap terbaca. */
+  const kiniNorm = normalkan(kini);
+  const geserWajah = cariGeseran(v.dasarNorm, kiniNorm, AREA_WAJAH);
+  const geser = {
+    sx: geserWajah.sx,
+    sy: geserWajah.sy,
+    sisa: cariGeseran(v.dasarNorm, kiniNorm, SELURUH).sisa,
+  };
   const ciri = ciriFrame(kini);
-  const c = (ciri && v.dasarCiri) ? bandingkanCiri(v.dasarCiri, ciri) : null;
+  const c = (ciri && v.dasarCiri) ? bandingkanCiri(v.dasarCiri, ciri, geser) : null;
   if (c) Object.assign(c, bedaPerParuh(v.dasar, kini));
   const uji = c ? UJI_GERAK[v.tantangan.uji](c) : { lolos: false, maju: 0 };
   v.ciriTerakhir = c;
   tulisDiagnostik(d, c, uji);
 
-  // Dua syarat harus terpenuhi sekaligus: perubahannya cukup besar (gerbang
-  // kasar), DAN bentuk gerakannya sesuai perintah. Syarat kedua inilah yang
-  // membuat bergeser sedikit tidak lagi meloloskan perintah menoleh.
-  // Keduanya juga harus BERTAHAN — sentakan sesaat tidak dihitung.
+  // Bila gambarnya bergeser jauh tetapi hampir tidak menyisakan perubahan,
+  // berarti yang bergerak HP-nya, bukan wajahnya. Beri tahu pegawainya —
+  // tanpa ini ia hanya melihat bilah yang tidak mau naik tanpa sebab.
+  if (c && Math.hypot(c.geserX, c.geserY) >= VERIF.GOYANG_HP && c.sisa < VERIF.SISA_MIN) {
+    statusVerif('Tahan HP Anda', 'Yang perlu bergerak wajahnya, bukan kameranya.', 'gagal');
+  } else if (v.fase === 'menunggu') {
+    statusVerif('Lakukan perintah di atas', 'Tombol foto terbuka begitu gerakan Anda terbaca.');
+  }
+
+  // Semua syarat harus terpenuhi sekaligus — besar gerakan, arahnya, dan
+  // perubahan yang tersisa setelah geseran gambar dibuang — dan harus
+  // BERTAHAN beberapa cuplikan. Sentakan sesaat tidak dihitung.
   if (uji.lolos) {
     v.gerakBerturut++;
     aturMaju(Math.max(0.55, v.gerakBerturut / VERIF.BUTUH_GERAK));
@@ -961,6 +1083,7 @@ function pantauGerak() {
     if (segar) {
       v.dasar = kini;
       v.dasarCiri = segar;
+      v.dasarNorm = normalkan(kini);
       v.puncak = 0;
       aturMaju(0);
     }
