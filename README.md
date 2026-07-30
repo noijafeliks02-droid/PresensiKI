@@ -120,7 +120,7 @@ Izin & Cuti · Lokasi Kantor · Laporan.
   penghapusan, dan perubahan datanya langsung terlihat di aplikasi pegawai.
 - **Kelola unit kerja** lewat tombol **Unit Kerja** di menu Pegawai: tambah,
   ganti nama, dan hapus — lihat bagian di bawah.
-- Pencarian, penyaringan (status & unit kerja), dan paginasi untuk 248 pegawai.
+- Pencarian, penyaringan (status & unit kerja), dan paginasi daftar pegawai.
 - Persetujuan izin/cuti yang langsung memperbarui seluruh angka terkait.
 - **Peta interaktif di menu Lokasi Kantor**: klik peta atau tarik pin emas
   untuk memindahkan titik kantor, dan lingkaran radius langsung berubah saat
@@ -301,8 +301,14 @@ CARTO dirender manual di bawah peta agar tidak tertutup panel.
 
 Data contoh dibangkitkan **deterministik** (seeded random), sehingga angka
 yang muncul selalu sama setiap halaman dibuka — penting agar demo tidak
-berubah-ubah. Komposisi kehadiran dikunci ke angka desain: 248 pegawai,
-213 tepat waktu (85,9%), 18 terlambat (7,3%), 9 izin/cuti, 8 belum absen.
+berubah-ubah. Roster uji berisi **3 pegawai** pada satu unit kerja
+(**PPK PSDA**); unit lain ditambahkan sendiri lewat panel admin.
+
+Komposisi kehadirannya dikunci: satu pegawai contoh tepat waktu, satu
+terlambat dan tercatat di luar radius (bahan audit untuk menu Bukti Absen).
+Pemilik akun tidak diberi status karangan — statusnya dibaca dari presensi
+sungguhan, sehingga angka di dashboard admin benar-benar berubah saat
+tombol absen ditekan.
 
 ---
 
