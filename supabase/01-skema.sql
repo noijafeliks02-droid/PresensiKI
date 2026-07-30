@@ -3,9 +3,11 @@
 -- Balai Wilayah Sungai Maluku
 -- ------------------------------------------------------------
 -- CARA PAKAI
---   1. Ganti alamat email di bagian 7 dengan email Anda sendiri.
---   2. Tempel SELURUH berkas ini ke Supabase → SQL Editor → Run.
---   3. Periksa Table Editor: 6 tabel, semuanya bertanda "RLS enabled".
+--   Tempel SELURUH berkas ini ke Supabase → SQL Editor → Run.
+--   TIDAK ADA yang perlu disunting di sini.
+--
+--   Sesudah itu jalankan 02-admin-pertama.sql (data Anda), lalu
+--   03-periksa.sql untuk memastikan semuanya benar.
 --
 -- Aman dijalankan berulang pada proyek yang sama.
 --
@@ -521,30 +523,10 @@ insert into public.unit_kerja (nama) values
   ('PPK PSDA')
 on conflict (nama) do nothing;
 
--- ============================================================
--- ADMIN PERTAMA — WAJIB DIGANTI
--- ------------------------------------------------------------
--- Ada masalah ayam-dan-telur: hanya admin yang boleh mengisi daftar
--- pegawai, tapi belum ada admin sama sekali. Baris di bawah memutus itu.
--- SQL Editor berjalan sebagai postgres sehingga tidak terhalang RLS.
---
--- GANTI ketiga nilai ini dengan milik Anda. Sesudah dijalankan, buka
--- Kompas → Daftar → masukkan email yang sama → buat sandi Anda sendiri.
--- Sandi itu tidak pernah lewat sini dan tidak pernah saya lihat.
--- ============================================================
-insert into public.pegawai_terdaftar (email, nik, nama, jabatan, peran, unit_id)
-values (
-  'ganti@email.anda',                    -- <<< email Anda
-  '8101010101010001',                    -- <<< NIK Anda, tepat 16 digit
-  'Nama Admin',                          -- <<< nama Anda
-  'Pejabat Pembuat Komitmen',
-  'admin',
-  (select id from public.unit_kerja where nama = 'PPK PSDA')
-)
-on conflict (email) do nothing;
-
 
 -- ============================================================
 -- SELESAI
--- Table Editor harus menampilkan 6 tabel, semuanya "RLS enabled".
+-- ------------------------------------------------------------
+-- Belum ada satu pun akun. Lanjutkan ke 02-admin-pertama.sql untuk
+-- mendaftarkan diri Anda sebagai admin, lalu 03-periksa.sql.
 -- ============================================================
