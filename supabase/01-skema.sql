@@ -10,15 +10,23 @@
 -- Aman dijalankan berulang pada proyek yang sama.
 --
 -- ------------------------------------------------------------
--- MASUK MEMAKAI EMAIL, NIP TETAP SEBAGAI DATA
+-- MASUK MEMAKAI EMAIL, NIK SEBAGAI IDENTITAS PEGAWAI
 --
 -- Email adalah kredensial: yang diurus Supabase Auth, dan yang membuat
 -- tombol "Lupa kata sandi?" berfungsi tanpa kode tambahan.
--- NIP adalah identitas kepegawaian: tetap unik, tetap dipakai di rekap
--- kehadiran, ekspor CSV, dan laporan untuk kepegawaian.
 --
--- Kunci sebenarnya adalah id internal (uuid), bukan email. Jadi pegawai
--- yang berganti email tidak kehilangan riwayat presensinya.
+-- NIK (16 digit, dari KTP) adalah identitas pegawai: unik, dipakai di
+-- rekap kehadiran dan laporan. Dipakai menggantikan NIP karena tidak
+-- semua pegawai berstatus ASN — tenaga kontrak tidak punya NIP,
+-- sedangkan NIK dimiliki semua orang.
+--
+-- NIK adalah data pribadi yang dilindungi UU 27/2022, dan bocornya
+-- berakibat lebih jauh daripada NIP: NIK dipakai untuk perbankan,
+-- kartu SIM, dan layanan publik. Karena itu tabel yang memuatnya hanya
+-- terbaca admin, dan tidak pernah dikirim ke aplikasi pegawai.
+--
+-- Kunci sebenarnya adalah id internal (uuid), bukan email maupun NIK.
+-- Jadi pegawai yang berganti email tidak kehilangan riwayat presensinya.
 --
 -- ------------------------------------------------------------
 -- TIGA HAL YANG TIDAK MUNGKIN DI PROTOTIPE localStorage
@@ -56,7 +64,7 @@ create table if not exists public.unit_kerja (
 -- Halaman Kompas terbuka di internet. Tanpa daftar ini, siapa pun yang
 -- menemukan alamatnya bisa membuat akun dan masuk ke sistem presensi.
 --
--- Jadi alurnya: admin memasukkan email + NIP + nama pegawai di sini
+-- Jadi alurnya: admin memasukkan email + NIK + nama pegawai di sini
 -- lebih dulu. Pegawai lalu mendaftar sendiri dengan email itu dan
 -- membuat sandinya sendiri. Email yang tidak ada di sini ditolak.
 --
@@ -64,7 +72,10 @@ create table if not exists public.unit_kerja (
 create table if not exists public.pegawai_terdaftar (
   id           uuid primary key default gen_random_uuid(),
   email        text not null unique check (position('@' in email) > 1),
-  nip          text not null unique check (nip ~ '^[0-9]{8,20}$'),
+  -- NIK selalu tepat 16 digit. Panjang dipatok, bukan diberi rentang:
+  -- NIK 15 atau 17 digit pasti salah ketik, dan lebih baik ditolak saat
+  -- didaftarkan daripada baru ketahuan saat menyusun laporan.
+  nik          text not null unique check (nik ~ '^[0-9]{16}$'),
   nama         text not null,
   jabatan      text,
   unit_id      uuid references public.unit_kerja(id) on delete set null,
@@ -81,7 +92,7 @@ create table if not exists public.pegawai_terdaftar (
 create table if not exists public.pegawai (
   id         uuid primary key references auth.users(id) on delete cascade,
   email      text not null unique,
-  nip        text not null unique,
+  nik        text not null unique check (nik ~ '^[0-9]{16}$'),
   nama       text not null,
   jabatan    text,
   unit_id    uuid references public.unit_kerja(id) on delete set null,
@@ -198,8 +209,8 @@ $$;
 -- dicari di pegawai_terdaftar; kalau tidak ada, pendaftarannya gagal dan
 -- aplikasi menampilkan pesan agar menghubungi admin.
 --
--- NIP, nama, jabatan, dan unit diambil dari daftar yang Anda isi — bukan
--- dari apa yang diketik pegawai. Jadi pegawai tidak bisa mengarang NIP
+-- NIK, nama, jabatan, dan unit diambil dari daftar yang Anda isi — bukan
+-- dari apa yang diketik pegawai. Jadi pegawai tidak bisa mengarang NIK
 -- atau memilih sendiri jabatannya.
 -- ============================================================
 
@@ -219,8 +230,8 @@ begin
     raise exception 'Email % sudah pernah dipakai mendaftar.', new.email;
   end if;
 
-  insert into public.pegawai (id, email, nip, nama, jabatan, unit_id, peran, cuti_kuota)
-  values (new.id, lower(new.email), d.nip, d.nama, d.jabatan, d.unit_id, d.peran, d.cuti_kuota);
+  insert into public.pegawai (id, email, nik, nama, jabatan, unit_id, peran, cuti_kuota)
+  values (new.id, lower(new.email), d.nik, d.nama, d.jabatan, d.unit_id, d.peran, d.cuti_kuota);
 
   update public.pegawai_terdaftar set sudah_daftar = true where id = d.id;
   return new;
@@ -378,8 +389,10 @@ create policy "unit kelola" on public.unit_kerja
   for all to authenticated using (public.saya_admin()) with check (public.saya_admin());
 
 -- ---------- Daftar pegawai yang boleh mendaftar ----------
--- Admin saja. Isinya email + NIP seluruh pegawai; itu data pribadi, dan
--- tidak boleh terbaca oleh pegawai lain, apalagi oleh pengunjung anonim.
+-- Admin saja. Isinya email + NIK seluruh pegawai — data pribadi yang
+-- tidak boleh terbaca pegawai lain, apalagi pengunjung anonim. NIK yang
+-- bocor bisa dipakai menyalahgunakan identitas orangnya, jadi tabel ini
+-- yang paling ketat di seluruh skema.
 -- Pemicu pendaftaran tetap bisa membacanya karena `security definer`.
 drop policy if exists "terdaftar kelola" on public.pegawai_terdaftar;
 create policy "terdaftar kelola" on public.pegawai_terdaftar
@@ -519,10 +532,10 @@ on conflict (nama) do nothing;
 -- Kompas → Daftar → masukkan email yang sama → buat sandi Anda sendiri.
 -- Sandi itu tidak pernah lewat sini dan tidak pernah saya lihat.
 -- ============================================================
-insert into public.pegawai_terdaftar (email, nip, nama, jabatan, peran, unit_id)
+insert into public.pegawai_terdaftar (email, nik, nama, jabatan, peran, unit_id)
 values (
   'ganti@email.anda',                    -- <<< email Anda
-  '196804251994031002',                  -- <<< NIP Anda
+  '8101010101010001',                    -- <<< NIK Anda, tepat 16 digit
   'Nama Admin',                          -- <<< nama Anda
   'Pejabat Pembuat Komitmen',
   'admin',
