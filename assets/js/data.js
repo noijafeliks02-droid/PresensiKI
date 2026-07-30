@@ -70,8 +70,8 @@ const URUTAN_VERIFIKASI = [
 const PROFIL = {
   nama: 'Budi Santoso',
   nip: '198504122010011003',
-  jabatan: 'Staf Teknik Sumber Daya Air',
-  unit: 'PPK PSDA',
+  jabatan: 'Staf Teknik Jalan & Jembatan',
+  unit: 'Ditjen Bina Marga',
   cutiKuota: 12,
   cutiTerpakai: 4,
 };
@@ -86,14 +86,21 @@ const PROFIL = {
  */
 const AKUN_ADMIN = { nip: '196804251994031002', sandi: 'admin123' };
 
-/* Satu unit bawaan saja. Unit lain ditambahkan sendiri oleh admin lewat
-   menu Kelola Unit Kerja, dan tersimpan di `simpanan.unitTambahan` —
-   bukan di daftar ini, yang dibangun ulang setiap halaman dimuat. */
-const UNIT_KERJA = ['PPK PSDA'];
+const UNIT_KERJA = [
+  'Ditjen Bina Marga',
+  'Ditjen Cipta Karya',
+  'Ditjen Sumber Daya Air',
+  'Ditjen Perumahan',
+  'Ditjen Bina Konstruksi',
+  'Sekretariat Jenderal',
+  'Inspektorat Jenderal',
+  'Badan Pengembangan SDM',
+];
 
 const JABATAN = [
-  'Staf Teknik Sumber Daya Air', 'Pengawas Lapangan', 'Pengelola Data Hidrologi',
-  'Surveyor Teknik', 'Bendahara Pengeluaran Pembantu', 'Staf Tata Usaha',
+  'Staf Teknik Jalan & Jembatan', 'Analis Kepegawaian', 'Perencana Muda',
+  'Pengelola Data', 'Surveyor Teknik', 'Bendahara Pengeluaran',
+  'Arsiparis', 'Pranata Komputer', 'Auditor Muda', 'Staf Tata Usaha',
 ];
 
 /* ---------- Pembangkit roster pegawai ---------- */
@@ -107,7 +114,7 @@ const BELAKANG = ['Santoso', 'Nurhayati', 'Prasetyo', 'Wijaya', 'Hidayat', 'Rahm
   'Firmansyah', 'Maulida', 'Pratama', 'Handayani', 'Nugroho', 'Safitri',
   'Permana', 'Wibowo'];
 
-const TOTAL_PEGAWAI = 3;
+const TOTAL_PEGAWAI = 26;
 
 /**
  * Bangun daftar pegawai lengkap. Deterministik: seed tetap 20260101 supaya
@@ -121,11 +128,7 @@ function bangunPegawai() {
     daftar.push({
       id: i + 1,
       nama,
-      // NIP ASN = 18 digit: tanggal lahir (8) + tahun-bulan pengangkatan (6)
-      // + kode jenis kelamin (1) + nomor urut (3).
-      nip: `19${80 + Math.floor(r() * 20)}${pad2(1 + Math.floor(r() * 12))}${pad2(1 + Math.floor(r() * 28))}`
-         + `20${pad2(5 + Math.floor(r() * 15))}${pad2(1 + Math.floor(r() * 12))}`
-         + `${Math.floor(r() * 2) + 1}${pad2(1 + Math.floor(r() * 9))}1`,
+      nip: `19${80 + Math.floor(r() * 20)}${pad2(1 + Math.floor(r() * 12))}${pad2(1 + Math.floor(r() * 28))}20${pad2(5 + Math.floor(r() * 15))}${Math.floor(r() * 2) + 1}001`,
       unit: UNIT_KERJA[Math.floor(r() * UNIT_KERJA.length)],
       jabatan: JABATAN[Math.floor(r() * JABATAN.length)],
       inisial: inisial(nama),
@@ -137,74 +140,52 @@ function bangunPegawai() {
 }
 
 /**
- * Status kehadiran pegawai SELAIN pemilik akun.
+ * Status kehadiran seluruh pegawai untuk hari ini.
  *
  * Komposisinya dikunci — bukan diundi — supaya angka di kartu statistik
  * admin selalu konsisten dan masuk akal. Jumlahnya HARUS sama dengan
- * TOTAL_PEGAWAI dikurangi satu; bila kurang, sisanya diisi 'Tepat waktu'
- * begitu saja, dan bila lebih, kelebihannya dipotong.
+ * TOTAL_PEGAWAI, kalau tidak sisanya akan diisi 'Tepat waktu' begitu saja.
  */
-const KOMPOSISI_HARI_INI = { 'Tepat waktu': 1, 'Terlambat': 1 };
+const KOMPOSISI_HARI_INI = { 'Tepat waktu': 22, 'Terlambat': 2, 'Izin/Cuti': 1, 'Belum absen': 1 };
 
-/**
- * Pegawai yang absennya tercatat di luar radius kantor.
- *
- * Dipatok ke satu id, bukan diundi. Dengan roster tiga orang, pengundian
- * bisa saja tidak pernah kena sama sekali, dan menu "Bukti Absen" jadi
- * tidak punya satu pun contoh kasus yang perlu diaudit admin. Setel 0
- * untuk membuat semua pegawai contoh tercatat di dalam radius.
- */
-const ID_LUAR_RADIUS = 3;
-
-/**
- * Status kehadiran seluruh pegawai hari ini.
- *
- * Pemilik akun (id 1) tidak diberi status karangan — statusnya dibaca dari
- * presensi sungguhan lewat kehadiranPemilik(). Kalau dikarang, kartu
- * statistik admin akan mengaku dia sudah hadir padahal tombol absen belum
- * disentuh, sekaligus bertabrakan dengan menu Bukti Absen yang sejak awal
- * memakai data sungguhan. Pada roster 26 orang selisih satu itu tidak
- * kelihatan; pada roster tiga orang langsung mencolok.
- */
-function bangunKehadiranHariIni(pegawai, presensi, kantor = KANTOR_DEFAULT) {
+function bangunKehadiranHariIni(pegawai) {
   const r = bikinRng(4242);
-  const lain = pegawai.filter(p => p.id !== 1);
 
   // Susun daftar status sesuai kuota, lalu acak urutannya (Fisher–Yates)
   // agar sebarannya tidak berkelompok di tabel.
-  const jatah = [];
+  const status = [];
   for (const [s, n] of Object.entries(KOMPOSISI_HARI_INI)) {
-    for (let i = 0; i < n; i++) jatah.push(s);
+    for (let i = 0; i < n; i++) status.push(s);
   }
-  while (jatah.length < lain.length) jatah.push('Tepat waktu');
-  jatah.length = lain.length;
-  for (let i = jatah.length - 1; i > 0; i--) {
+  while (status.length < pegawai.length) status.push('Tepat waktu');
+  for (let i = status.length - 1; i > 0; i--) {
     const j = Math.floor(r() * (i + 1));
-    [jatah[i], jatah[j]] = [jatah[j], jatah[i]];
+    [status[i], status[j]] = [status[j], status[i]];
   }
-  const kuota = new Map(lain.map((p, i) => [p.id, jatah[i]]));
 
+  // Satu orang yang hadir tercatat di luar radius — ini yang perlu diaudit admin.
+  let sisaLuarRadius = 1;
+
+  const k = KANTOR_DEFAULT;
   const mPerLat = 111320;
-  const mPerLng = 111320 * Math.cos(kantor.lat * Math.PI / 180);
+  const mPerLng = 111320 * Math.cos(k.lat * Math.PI / 180);
 
-  return pegawai.map(p => {
-    if (p.id === 1) return { ...p, ...kehadiranPemilik(presensi, kantor) };
-
-    const s = kuota.get(p.id) || 'Tepat waktu';
+  return pegawai.map((p, i) => {
+    const s = status[i];
     let jamMasuk = '—', jamKeluar = '—', lokasi = '—', dalamRadius = false;
 
     if (s === 'Tepat waktu') {
       jamMasuk = `07:${pad2(5 + Math.floor(r() * 25))}`;
-      lokasi = 'Area kantor';
+      lokasi = 'Gedung Utama';
       dalamRadius = true;
     } else if (s === 'Terlambat') {
       jamMasuk = `08:${pad2(1 + Math.floor(r() * 40))}`;
-      lokasi = 'Area kantor';
+      lokasi = r() < 0.7 ? 'Gedung Utama' : 'Gedung Menteri';
       dalamRadius = true;
     }
-    if (dalamRadius && p.id === ID_LUAR_RADIUS) {
+    if (dalamRadius && sisaLuarRadius > 0 && r() < 0.12) {
       dalamRadius = false;
-      lokasi = 'Di luar area kantor';
+      sisaLuarRadius--;
     }
 
     // Koordinat & akurasi ikut dibangkitkan supaya menu Bukti Absen punya
@@ -212,46 +193,15 @@ function bangunKehadiranHariIni(pegawai, presensi, kantor = KANTOR_DEFAULT) {
     let lat = null, lng = null, akurasi = null, jarak = null;
     if (jamMasuk !== '—') {
       const arah = r() * Math.PI * 2;
-      jarak = Math.round(dalamRadius ? r() * kantor.radius * 0.9 : kantor.radius * (1.2 + r() * 0.9));
-      lat = kantor.lat + (Math.sin(arah) * jarak) / mPerLat;
-      lng = kantor.lng + (Math.cos(arah) * jarak) / mPerLng;
+      jarak = Math.round(dalamRadius ? r() * k.radius * 0.9 : k.radius * (1.2 + r() * 0.9));
+      lat = k.lat + (Math.sin(arah) * jarak) / mPerLat;
+      lng = k.lng + (Math.cos(arah) * jarak) / mPerLng;
       akurasi = 5 + Math.floor(r() * 25);
       jamKeluar = r() < 0.75 ? `16:${pad2(2 + Math.floor(r() * 45))}` : '—';
     }
 
     return { ...p, status: s, jamMasuk, jamKeluar, lokasi, dalamRadius, lat, lng, akurasi, jarak };
   });
-}
-
-/**
- * Baris kehadiran pemilik akun, dibaca dari presensi sungguhan.
- *
- * Label lokasinya sengaja tidak memakai nama kantor: kolom "Dalam Radius"
- * di sebelahnya sudah membawa keterangan itu, dan nama kantor bawaan masih
- * menunjuk titik lain sampai admin menyetelnya.
- */
-function kehadiranPemilik(presensi, kantor) {
-  if (!presensi || !presensi.jamMasuk) {
-    return {
-      status: 'Belum absen', jamMasuk: '—', jamKeluar: '—', lokasi: '—',
-      dalamRadius: false, lat: null, lng: null, akurasi: null, jarak: null,
-    };
-  }
-
-  // Jarak null berarti presensi dilakukan dalam mode demo (lokasi dilewati),
-  // jadi diperlakukan sebagai di dalam radius alih-alih dianggap curiga.
-  const dalamRadius = presensi.jarak == null || presensi.jarak <= kantor.radius;
-  return {
-    status: presensi.status || 'Tepat waktu',
-    jamMasuk: presensi.jamMasuk,
-    jamKeluar: presensi.jamKeluar || '—',
-    lokasi: dalamRadius ? 'Area kantor' : 'Di luar area kantor',
-    dalamRadius,
-    lat: presensi.lat ?? null,
-    lng: presensi.lng ?? null,
-    akurasi: presensi.akurasi ?? null,
-    jarak: presensi.jarak ?? null,
-  };
 }
 
 /**
@@ -285,13 +235,11 @@ function bangunTren() {
   for (let i = 6; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    // Angkanya diskalakan ke TOTAL_PEGAWAI: hari kerja hampir penuh, dengan
-    // nol sampai satu orang terlambat dan sesekali satu orang tidak absen;
-    // akhir pekan kosong. Jumlah tepat + telat tidak pernah melebihi roster.
+    // Angkanya diskalakan ke TOTAL_PEGAWAI: hari kerja sekitar 19–22 orang
+    // tepat waktu dan 1–3 terlambat, akhir pekan nyaris kosong.
     const akhirPekan = d.getDay() === 0 || d.getDay() === 6;
-    const telat = akhirPekan ? 0 : (r() < 0.35 ? 1 : 0);
-    const belum = akhirPekan ? 0 : (r() < 0.25 ? 1 : 0);
-    const tepat = akhirPekan ? 0 : Math.max(0, TOTAL_PEGAWAI - telat - belum);
+    const tepat = akhirPekan ? Math.floor(r() * 2) : 19 + Math.floor(r() * 4);
+    const telat = akhirPekan ? 0 : 1 + Math.floor(r() * 3);
     hasil.push({ tanggal: new Date(d), label: NAMA_HARI[d.getDay()].slice(0, 3), tepat, telat });
   }
   return hasil;
@@ -358,11 +306,7 @@ function bangunPengajuan(pegawai) {
     'Perawatan pasca operasi ringan', 'Mengantar orang tua berobat',
   ];
   const hasil = [];
-
-  // Banyaknya contoh ikut ukuran roster: kantor tiga orang tidak masuk akal
-  // punya delapan pengajuan menggantung sekaligus.
-  const jml = Math.max(1, Math.min(8, pegawai.length - 1));
-  for (let i = 0; i < jml; i++) {
+  for (let i = 0; i < 8; i++) {
     // Indeks dibatasi panjang daftar yang sebenarnya. Sebelumnya dipatok
     // sampai 60 — aman saat pegawainya 248, tetapi menabrak data kosong
     // begitu jumlahnya dikecilkan.
@@ -481,60 +425,25 @@ const DB = {
 
     const pertamaKali = !(tersimpan && tersimpan.versi === 1);
     if (!pertamaKali) Object.assign(this.simpanan, tersimpan.data);
-    let perluTulis = pertamaKali;
-
-    // Presensi hari sebelumnya tidak berlaku lagi hari ini, tetapi tidak
-    // dibuang — dipindahkan ke arsip supaya buktinya tetap bisa diperiksa
-    // admin di kemudian hari.
-    //
-    // Dikerjakan SEBELUM roster disusun: baris kehadiran pemilik akun kini
-    // dibaca dari presensi hari ini, jadi kalau presensi basi belum dibuang
-    // dashboard admin akan memakai jam absen kemarin.
-    const hariIni = kunciTanggal(new Date());
-    if (this.simpanan.presensi && this.simpanan.presensi.tanggal !== hariIni) {
-      this.arsipkanPresensi(this.simpanan.presensi);
-      this.simpanan.presensi = null;
-      perluTulis = true;
-    }
 
     // Roster dibangun setelah simpanan dimuat, supaya suntingan admin ikut terpakai.
     this.susunPegawai();
 
-    if (pertamaKali) this.simpanan.pengajuan = bangunPengajuan(this.pegawai);
-    if (this.rapikanPengajuan()) perluTulis = true;
-    if (perluTulis) this.tulis();
-    return this;
-  },
-
-  /**
-   * Buang pengajuan yang pemiliknya tidak ada lagi di roster.
-   *
-   * Roster pernah dikecilkan dari 26 pegawai menjadi 3. Perangkat yang sudah
-   * memakai versi sebelumnya masih menyimpan pengajuan milik pegawai yang
-   * sekarang tidak ada — lengkap dengan nama unit kerja lama — dan itu ikut
-   * terbaca di panel admin. Presensi dan arsip fotonya tidak disentuh.
-   *
-   * Nama, inisial, dan unit yang masih berlaku ikut disegarkan dari roster:
-   * ketiganya disalin saat pengajuan dibuat, jadi bisa basi setelah admin
-   * menyunting pegawai atau mengganti nama unitnya.
-   *
-   * @returns true bila ada yang berubah dan perlu ditulis ulang
-   */
-  rapikanPengajuan() {
-    const s = this.simpanan;
-    const bersih = s.pengajuan.filter(x => this.pegawaiById(x.pegawaiId));
-    let berubah = bersih.length !== s.pengajuan.length;
-
-    for (const x of bersih) {
-      const p = this.pegawaiById(x.pegawaiId);
-      if (x.nama !== p.nama || x.unit !== p.unit) berubah = true;
-      x.nama = p.nama;
-      x.inisial = p.inisial;
-      x.unit = p.unit;
+    if (pertamaKali) {
+      this.simpanan.pengajuan = bangunPengajuan(this.pegawai);
+      this.tulis();
     }
 
-    s.pengajuan = bersih;
-    return berubah;
+    // Presensi hari sebelumnya tidak berlaku lagi hari ini, tetapi tidak
+    // dibuang — dipindahkan ke arsip supaya buktinya tetap bisa diperiksa
+    // admin di kemudian hari.
+    const hariIni = kunciTanggal(new Date());
+    if (this.simpanan.presensi && this.simpanan.presensi.tanggal !== hariIni) {
+      this.arsipkanPresensi(this.simpanan.presensi);
+      this.simpanan.presensi = null;
+      this.tulis();
+    }
+    return this;
   },
 
   /**
@@ -628,8 +537,7 @@ const DB = {
       // sehingga tidak perlu menulis satu suntingan per pegawai.
       .map(p => (s.unitUbah[p.unit] ? { ...p, unit: s.unitUbah[p.unit] } : p));
 
-    this.kehadiranHariIni = bangunKehadiranHariIni(
-      this.pegawai, s.presensi, s.kantor);
+    this.kehadiranHariIni = bangunKehadiranHariIni(this.pegawai);
   },
 
   /* ---- Unit kerja ---- */
@@ -812,7 +720,7 @@ const DB = {
    * Hari ini: seluruh pegawai, dengan foto contoh — kecuali pemilik akun
    * yang memakai selfie sungguhan bila sudah check-in.
    * Tanggal lampau: hanya yang benar-benar tersimpan di arsip, karena
-   * prototipe ini tidak membangkitkan riwayat foto pegawai contoh.
+   * prototipe ini tidak membangkitkan riwayat foto untuk 248 pegawai.
    */
   bukti(tanggal) {
     const hariIni = kunciTanggal(new Date());
