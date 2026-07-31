@@ -1295,11 +1295,25 @@ function ambilFotoPresensi(tombol) {
     hasil: v.fase === 'lolos' ? 'lolos' : (v.kameraGagal ? 'tanpaKamera' : 'lemah'),
   };
 
-  setTimeout(() => {
-    if (S.mode === 'keluar') simpanCheckOut(foto, verif);
-    else simpanCheckIn(foto, verif);
+  setTimeout(async () => {
     matikanKamera();
+    const r = S.mode === 'keluar'
+      ? await simpanCheckOut(foto, verif)
+      : await simpanCheckIn(foto, verif);
+
+    if (!r.ok) {
+      // Presensi ditolak server. Jangan tampilkan layar Berhasil —
+      // pegawai akan pulang mengira sudah absen padahal belum.
+      v.sibuk = false;
+      pindah('home');
+      toast(r.pesan, 'err');
+      return;
+    }
+
     pindah('sukses');
+    if (r.fotoGagal) {
+      toast('Presensi tercatat, tetapi fotonya gagal terkirim.', 'err');
+    }
   }, 420);
 }
 
@@ -1375,9 +1389,31 @@ function layarSukses() {
    Layar 6 — Riwayat
    ============================================================ */
 
-/** Riwayat satu bulan, digabung dengan presensi hari ini yang tersimpan. */
+/**
+ * Riwayat satu bulan, digabung dengan presensi hari ini.
+ *
+ * Setelah pegawai masuk, isinya presensi sungguhan dari server —
+ * termasuk kosong, kalau memang belum pernah absen. Data contoh hanya
+ * dipakai sebelum ada yang masuk, supaya layar tidak kosong melompong
+ * saat aplikasi baru dibuka.
+ */
 function riwayatBulan(tahun, bulan) {
-  const list = bangunRiwayat(tahun, bulan);
+  const list = AKUN.masuk_()
+    ? PRESENSI.riwayat
+      .filter(r => {
+        const d = new Date(r.tanggal + 'T00:00:00');
+        return d.getFullYear() === tahun && d.getMonth() === bulan;
+      })
+      .map(r => {
+        const d = new Date(r.tanggal + 'T00:00:00');
+        return {
+          tanggal: r.tanggal, tgl: d.getDate(),
+          hari: NAMA_HARI[d.getDay()].slice(0, 3),
+          status: r.status, masuk: r.jamMasuk, keluar: r.jamKeluar || '—',
+        };
+      })
+    : bangunRiwayat(tahun, bulan);
+
   const p = DB.presensi;
   if (p) {
     const d = new Date(p.tanggal + 'T00:00:00');
@@ -1890,43 +1926,64 @@ const AKSI = {
   },
 };
 
+/**
+ * Hitung ulang jarak ke kantor.
+ *
+ * Dipanggil setiap kali titik kantor berubah — saat admin memindahkannya,
+ * dan saat pengaturan baru saja diambil dari server setelah masuk. Tanpa
+ * ini, pegawai bisa terlihat "di luar kantor" hanya karena jaraknya masih
+ * dihitung terhadap titik lama.
+ */
+function hitungUlangJarak() {
+  if (S.gps.status !== 'ok') return;
+  const k = DB.kantor;
+  const jarak = jarakMeter(S.gps.lat, S.gps.lng, k.lat, k.lng);
+  S.gps.jarak = Math.round(jarak);
+  S.gps.dalam = jarak <= k.radius;
+}
+
 /** Email yang sedang diketik di layar masuk atau daftar. */
 function emailDiketik() {
   const el = document.getElementById('inpEmail') || document.getElementById('dafEmail');
   return (el?.value || S.emailIsian || '').trim();
 }
 
-/** Catat presensi masuk ke penyimpanan. */
-function simpanCheckIn(foto, verif) {
-  const now = new Date();
-  const jam = fmtJam(now);
-  DB.simpanan.presensi = {
-    tanggal: kunciTanggal(now),
-    jamMasuk: jam,
-    jamKeluar: null,
-    status: jam <= SHIFT.batasTerlambat ? 'Tepat waktu' : 'Terlambat',
-    selfie: foto,
+/**
+ * Catat presensi masuk ke server.
+ *
+ * Jam dan status sengaja TIDAK dikirim. Keduanya ditetapkan server dari
+ * jam server dan batas shift di tabel pengaturan — kalau dikirim dari
+ * sini, pegawai yang memundurkan jam HP-nya bisa mengaku tepat waktu.
+ */
+async function simpanCheckIn(foto, verif) {
+  const r = await PRESENSI.checkIn({
+    foto,
     verifikasi: verif,
     lat: S.gps.lat,
     lng: S.gps.lng,
     akurasi: S.gps.akurasi,
     jarak: S.gps.status === 'ok' ? S.gps.jarak : null,
-  };
-  DB.tulis();
+  });
+  if (r.ok) DB.simpanan.presensi = PRESENSI.hariIni;
+  return r;
 }
 
 /** Catat presensi pulang — foto, lokasi, dan hasil verifikasinya sendiri. */
-function simpanCheckOut(foto, verif) {
+async function simpanCheckOut(foto, verif) {
   const p = DB.simpanan.presensi;
-  if (!p || p.jamKeluar) return;
-  p.jamKeluar = fmtJam(new Date());
-  p.selfieKeluar = foto;
-  p.verifikasiKeluar = verif;
-  p.latKeluar = S.gps.lat;
-  p.lngKeluar = S.gps.lng;
-  p.akurasiKeluar = S.gps.akurasi;
-  p.jarakKeluar = S.gps.status === 'ok' ? S.gps.jarak : null;
-  DB.tulis();
+  if (!p) return { ok: false, pesan: 'Belum ada presensi masuk hari ini.' };
+  if (p.jamKeluar) return { ok: false, pesan: 'Anda sudah absen pulang hari ini.' };
+
+  const r = await PRESENSI.checkOut({
+    foto,
+    verifikasi: verif,
+    lat: S.gps.lat,
+    lng: S.gps.lng,
+    akurasi: S.gps.akurasi,
+    jarak: S.gps.status === 'ok' ? S.gps.jarak : null,
+  });
+  if (r.ok) DB.simpanan.presensi = PRESENSI.hariIni;
+  return r;
 }
 
 /* ============================================================
@@ -1989,11 +2046,16 @@ function pasangFormAkun() {
       if (!email || !sandi) {
         return tulisGalat('errLogin', 'Email dan kata sandi wajib diisi.');
       }
-      const r = await kirimForm(login, 'errLogin', () => AKUN.masuk(email, sandi));
+      const r = await kirimForm(login, 'errLogin', async () => {
+        const m = await AKUN.masuk(email, sandi);
+        if (m.ok) await PRESENSI.muat();
+        return m;
+      });
       if (!r.ok) return tulisGalat('errLogin', r.pesan);
 
       S.emailIsian = '';
       segarkanProfil();
+      hitungUlangJarak();
       pindah('home');
       toast(r.pesan);
     });
@@ -2133,18 +2195,18 @@ function pasangFormHandler() {
 
 window.addEventListener('storage', e => {
   if (e.key !== KUNCI_SIMPAN) return;
+
+  // Setelah pegawai masuk, titik kantor dan presensi datang dari server.
+  // Membaca ulang localStorage di sini justru akan menimpanya dengan
+  // nilai lama yang masih tertinggal di perangkat.
+  if (AKUN.masuk_()) return;
+
   const kantorLama = JSON.stringify(DB.kantor);
   const profilLama = JSON.stringify(DB.profil());
 
   if (!DB.segarkanDariPenyimpanan()) return;
 
-  // Jarak dihitung ulang terhadap titik kantor yang baru sebelum dirender.
-  if (S.gps.status === 'ok') {
-    const k = DB.kantor;
-    const jarak = jarakMeter(S.gps.lat, S.gps.lng, k.lat, k.lng);
-    S.gps.jarak = Math.round(jarak);
-    S.gps.dalam = jarak <= k.radius;
-  }
+  hitungUlangJarak();
   render();
 
   if (JSON.stringify(DB.kantor) !== kantorLama) toast('Titik kantor diperbarui oleh admin.');
@@ -2199,5 +2261,16 @@ if (HASIL_SETUP) toast(HASIL_SETUP.pesan, HASIL_SETUP.ok ? 'ok' : 'err');
   // lewat peristiwa PASSWORD_RECOVERY; jangan ditimpa ke beranda.
   if (AKUN.modePulihkanSandi) return;
 
-  pindah(AKUN.masuk_() ? 'home' : 'login');
+  if (!AKUN.masuk_()) { pindah('login'); return; }
+
+  // Titik kantor, jam shift, presensi hari ini, dan riwayat diambil dari
+  // server. Jaraknya dihitung ulang sesudahnya karena titik kantor bisa
+  // saja berbeda dari yang dipakai saat GPS pertama kali menjawab.
+  try {
+    await PRESENSI.muat();
+    hitungUlangJarak();
+  } catch (e) {
+    toast(pesanGalat(e), 'err');
+  }
+  pindah('home');
 })();
