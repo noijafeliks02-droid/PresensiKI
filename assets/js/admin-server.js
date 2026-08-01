@@ -343,7 +343,11 @@ const SRV = {
   async muatPengajuan() {
     const { data, error } = await SB
       .from('pengajuan')
-      .select('*, pegawai(id, nama, nik, unit_kerja(nama))')
+      /* Tabel pengajuan punya DUA kaitan ke pegawai: `pegawai_id` (yang
+         mengajukan) dan `diputus_oleh` (yang menyetujui). Tanpa menyebut
+         yang mana, server menolak dengan PGRST201 — "more than one
+         relationship was found". Yang dimaksud di sini si pengaju. */
+      .select('*, pegawai!pengajuan_pegawai_id_fkey(id, nama, nik, unit_kerja(nama))')
       .order('mulai', { ascending: false });
     if (error) throw error;
 

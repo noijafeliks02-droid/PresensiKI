@@ -1815,7 +1815,19 @@ function renderGerbang() {
         return gagal('Akun ini bukan admin. Gunakan aplikasi pegawai.');
       }
 
-      await muatDataAdmin();
+      // Sampai di sini kredensialnya sudah benar dan perannya admin.
+      // Kegagalan setelah ini adalah masalah memuat data, bukan masalah
+      // masuk — dan tidak boleh ditampilkan seolah kata sandinya salah,
+      // karena orangnya akan mencoba lagi berkali-kali dengan sandi yang
+      // sebenarnya sudah tepat.
+      try {
+        await muatDataAdmin();
+      } catch (ex) {
+        return gagal(
+          `Kredensial Anda benar, tetapi data panel gagal dimuat. `
+          + `Bukan kesalahan kata sandi. Kirimkan pesan ini: ${pesanGalat(ex)}`);
+      }
+
       render();
       toast(`Selamat datang, ${AKUN.profil.nama}.`);
     } catch (ex) {
