@@ -72,6 +72,7 @@ const HALAMAN = {
   kehadiran: { judul: 'Kehadiran', sub: 'Daftar presensi seluruh pegawai hari ini', ikon: 'check-clipboard' },
   bukti: { judul: 'Bukti Absen', sub: 'Foto verifikasi wajah datang & pulang beserta hasil tantangan geraknya', ikon: 'camera' },
   pegawai: { judul: 'Pegawai', sub: 'Data induk pegawai dan unit kerja', ikon: 'users' },
+  terdaftar: { judul: 'Pendaftaran', sub: 'Siapa yang boleh membuat akun Kompas', ikon: 'lock' },
   cuti: { judul: 'Izin & Cuti', sub: 'Persetujuan pengajuan izin, cuti, dan sakit', ikon: 'calendar' },
   lokasi: { judul: 'Lokasi Kantor', sub: 'Titik koordinat dan radius geofencing', ikon: 'pin' },
   laporan: { judul: 'Laporan', sub: 'Unduh rekap kehadiran untuk keperluan kepegawaian', ikon: 'chart' },
@@ -136,8 +137,8 @@ function renderTopbar() {
     ${pakaiCari ? `
       <label class="cari">
         ${icon('search', 17, 'var(--mut)', 2.4)}
-        <input id="inpCari" type="search" placeholder="Cari pegawai atau NIP…" value="${esc(V.cari)}"
-               aria-label="Cari pegawai atau NIP">
+        <input id="inpCari" type="search" placeholder="Cari pegawai atau NIK…" value="${esc(V.cari)}"
+               aria-label="Cari pegawai atau NIK">
       </label>` : ''}
     <button class="tb-btn" data-aksi="notif" aria-label="Notifikasi">
       ${icon('bell', 19, 'var(--ink)', 2.4)}<span class="dot"></span>
@@ -160,7 +161,13 @@ function renderTopbar() {
 function viewDashboard() {
   const r = DB.ringkasan();
   const menunggu = DB.pengajuanMenunggu();
-  const maks = Math.max(...DB.tren.map(d => d.tepat + d.telat));
+
+  /* Server bisa menjawab kosong — hari pertama pemakaian, atau sebelum
+     ada seorang pun yang absen. Batang grafik dibagi `maks`, jadi tanpa
+     penjaga ini pembaginya nol dan seluruh dashboard gagal dirender.
+     Grafik kosong jauh lebih baik daripada halaman yang tidak muncul. */
+  const adaTren = DB.tren.length >= 7;
+  const maks = Math.max(1, ...DB.tren.map(d => d.tepat + d.telat));
 
   const kartu = [
     { k: 'Total pegawai', v: fmtAngka(r.total), n: `${r.unit} unit kerja` },
@@ -182,7 +189,9 @@ function viewDashboard() {
         <div class="panel-head">
           <div>
             <div class="t">Tren kehadiran mingguan</div>
-            <div class="s">${fmtTanggalPendek(DB.tren[0].tanggal)} – ${fmtTanggalPendek(DB.tren[6].tanggal)}</div>
+            <div class="s">${adaTren
+    ? `${fmtTanggalPendek(DB.tren[0].tanggal)} – ${fmtTanggalPendek(DB.tren[6].tanggal)}`
+    : 'Belum ada data'}</div>
           </div>
           <div class="legend">
             <div><i style="background:var(--sage)"></i><span>Tepat waktu</span></div>
@@ -331,7 +340,7 @@ function daftarKehadiranTersaring() {
   return DB.kehadiranHariIni.filter(p => {
     if (V.filterStatus !== 'semua' && p.status !== V.filterStatus) return false;
     if (V.filterUnit !== 'semua' && p.unit !== V.filterUnit) return false;
-    if (q && !(p.nama.toLowerCase().includes(q) || p.nip.includes(q))) return false;
+    if (q && !(p.nama.toLowerCase().includes(q) || p.nik.includes(q))) return false;
     return true;
   });
 }
@@ -367,13 +376,13 @@ function viewKehadiran() {
     </div>
     <div class="tabel-bungkus">
       <table class="tabel">
-        <thead><tr><th>Pegawai</th><th>NIP</th><th>Unit Kerja</th><th>Jam Masuk</th><th>Lokasi</th><th>Radius</th><th>Status</th></tr></thead>
+        <thead><tr><th>Pegawai</th><th>NIK</th><th>Unit Kerja</th><th>Jam Masuk</th><th>Lokasi</th><th>Radius</th><th>Status</th></tr></thead>
         <tbody>
           ${halamanIni.length ? halamanIni.map(p => `
             <tr>
               <td><div class="sel-pegawai"><div class="av-tabel">${esc(p.inisial)}</div>
                 <div><div class="nama-tabel">${esc(p.nama)}</div><div class="sub-tabel">${esc(p.jabatan)}</div></div></div></td>
-              <td>${esc(p.nip)}</td>
+              <td>${esc(samarkanNik(p.nik))}</td>
               <td>${esc(p.unit)}</td>
               <td class="tegas">${jamTampil(p.jamMasuk)}</td>
               <td>${esc(p.lokasi)}</td>
@@ -410,18 +419,18 @@ function paginasi(totalHalaman) {
 
 function daftarBuktiTersaring() {
   const q = V.cari.trim().toLowerCase();
-  return DB.bukti(V.buktiTanggal).filter(b => {
+  return buktiKini().filter(b => {
     if (V.filterStatus !== 'semua' && b.status !== V.filterStatus) return false;
     if (V.filterUnit !== 'semua' && b.unit !== V.filterUnit) return false;
     if (V.buktiFoto === 'ada' && !b.foto) return false;
     if (V.buktiFoto === 'tidak' && b.foto) return false;
-    if (q && !(b.nama.toLowerCase().includes(q) || b.nip.includes(q))) return false;
+    if (q && !(b.nama.toLowerCase().includes(q) || b.nik.includes(q))) return false;
     return true;
   });
 }
 
 function viewBukti() {
-  const semua = DB.bukti(V.buktiTanggal);
+  const semua = buktiKini();
   const saring = daftarBuktiTersaring();
   const totalHalaman = Math.max(1, Math.ceil(saring.length / PER_GALERI));
   V.halaman = Math.min(V.halaman, totalHalaman);
@@ -432,7 +441,7 @@ function viewBukti() {
   const tanpaFoto = semua.length - berfoto;
   const diLuar = semua.filter(b => b.dalamRadius === false).length;
   const hariIni = kunciTanggal(new Date());
-  const tanggalList = DB.tanggalBukti();
+  const tanggalList = SRV.tanggalBukti || [PRESENSI.tanggalServer()];
 
   const kartu = [
     { k: 'Bukti terkumpul', v: fmtAngka(berfoto), n: `${fmtPersen(berfoto, semua.length || 1)} dari daftar`, warna: 'var(--sageInk)' },
@@ -544,7 +553,7 @@ function kartuBukti(b) {
 
 /** Dialog detail satu bukti absen: foto besar + seluruh metadatanya. */
 function dialogBukti(pegawaiId) {
-  const b = DB.bukti(V.buktiTanggal).find(x => x.pegawaiId === pegawaiId);
+  const b = buktiKini().find(x => x.pegawaiId === pegawaiId);
   if (!b) { toast('Bukti tidak ditemukan.', 'err'); return; }
 
   const w = warnaStatus(b.status);
@@ -573,7 +582,7 @@ function dialogBukti(pegawaiId) {
   };
 
   const barisUmum = [
-    ['NIP', esc(b.nip)],
+    ['NIK', esc(samarkanNik(b.nik))],
     ['Unit Kerja', esc(b.unit)],
     ['Jabatan', esc(b.jabatan)],
     ['Tanggal', esc(fmtTanggalPanjang(new Date(b.tanggal + 'T00:00:00')))],
@@ -647,7 +656,7 @@ function dialogBukti(pegawaiId) {
     <div class="modal-kaki">
       <button type="button" class="btn" data-aksi="tutupModal">Tutup</button>
       ${b.foto && b.fotoAsli
-      ? `<a class="btn btn-navy" href="${b.foto}" download="bukti-${esc(b.nip)}-${esc(b.tanggal)}.jpg">
+      ? `<a class="btn btn-navy" href="${b.foto}" download="bukti-${esc(b.nik)}-${esc(b.tanggal)}.jpg">
              ${icon('download', 16, 'currentColor')} Unduh Foto</a>`
       : ''}
     </div>`, 'modal-lebar');
@@ -662,7 +671,7 @@ function viewPegawai() {
   const unitList = DB.unitKerja();
   const semua = DB.pegawai.filter(p => {
     if (V.filterUnit !== 'semua' && p.unit !== V.filterUnit) return false;
-    if (q && !(p.nama.toLowerCase().includes(q) || p.nip.includes(q))) return false;
+    if (q && !(p.nama.toLowerCase().includes(q) || p.nik.includes(q))) return false;
     return true;
   });
   const totalHalaman = Math.max(1, Math.ceil(semua.length / PER_HALAMAN));
@@ -707,7 +716,7 @@ function viewPegawai() {
     <div class="tabel-bungkus">
       <table class="tabel">
         <thead><tr>
-          <th>Pegawai</th><th>NIP</th><th>Unit Kerja</th><th>Jabatan</th>
+          <th>Pegawai</th><th>NIK</th><th>Unit Kerja</th><th>Jabatan</th>
           <th style="text-align:right">Aksi</th>
         </tr></thead>
         <tbody>
@@ -723,7 +732,7 @@ function viewPegawai() {
                   </div>
                 </div>
               </td>
-              <td>${esc(p.nip)}</td>
+              <td>${esc(samarkanNik(p.nik))}</td>
               <td>${esc(p.unit)}</td>
               <td>${esc(p.jabatan)}</td>
               <td>
@@ -789,10 +798,10 @@ function dialogPegawai(id) {
                    placeholder="Contoh: Siti Nurhayati" required maxlength="60">
           </div>
           <div class="form-row kolom-penuh">
-            <label for="pgNip">NIP</label>
-            <input id="pgNip" name="nip" type="text" inputmode="numeric" value="${p ? esc(p.nip) : ''}"
-                   placeholder="18 digit" required pattern="[0-9]{8,20}">
-            <div class="bantu">Hanya angka, 8–20 digit, dan tidak boleh sama dengan pegawai lain</div>
+            <label for="pgNik">NIK</label>
+            <input id="pgNik" name="nik" type="text" inputmode="numeric" value="${p ? esc(p.nik) : ''}"
+                   placeholder="16 angka" required pattern="[0-9]{16}" maxlength="16">
+            <div class="bantu">Nomor KTP, tepat 16 angka, dan tidak boleh sama dengan pegawai lain</div>
           </div>
           <div class="form-row">
             <label for="pgUnit">Unit Kerja</label>
@@ -836,13 +845,13 @@ function dialogPegawai(id) {
     const gagal = pesan => { err.innerHTML = `<div class="modal-bahaya" style="margin-top:16px">${esc(pesan)}</div>`; };
 
     const nama = f.nama.value.trim();
-    const nip = f.nip.value.trim();
+    const nik = f.nik.value.trim();
     const jabatan = f.jabatan.value.trim();
     let unit = f.unit.value;
 
     if (nama.length < 3) return gagal('Nama lengkap minimal 3 karakter.');
-    if (!/^[0-9]{8,20}$/.test(nip)) return gagal('NIP harus berupa 8–20 digit angka.');
-    if (DB.nipDipakai(nip, id ?? undefined)) return gagal(`NIP ${nip} sudah dipakai pegawai lain.`);
+    if (!/^[0-9]{16}$/.test(nik)) return gagal('NIK harus tepat 16 angka.');
+    if (DB.nikDipakai(nik, id ?? undefined)) return gagal(`NIK ${nik} sudah dipakai pegawai lain.`);
     if (!jabatan) return gagal('Jabatan wajib diisi.');
 
     if (unit === '__baru__') {
@@ -852,7 +861,7 @@ function dialogPegawai(id) {
       unit = namaUnit;
     }
 
-    DB.simpanPegawai({ id: id ?? null, nama, nip, unit, jabatan });
+    DB.simpanPegawai({ id: id ?? null, nama, nik, unit, jabatan });
     tutupModal();
     render();
     toast(id == null ? `Pegawai ${nama} ditambahkan.` : `Data ${nama} diperbarui.`);
@@ -880,7 +889,7 @@ function dialogHapusPegawai(id) {
     </div>
     <div class="modal-isi">
       <div class="modal-bahaya">
-        <strong>${esc(p.nama)}</strong> (NIP ${esc(p.nip)}, ${esc(p.unit)}) akan dihapus dari
+        <strong>${esc(p.nama)}</strong> (NIK ${esc(samarkanNik(p.nik))}, ${esc(p.unit)}) akan dihapus dari
         data induk, rekap kehadiran, dan laporan.
         Riwayat pengajuan izin/cuti yang pernah dibuat tetap tersimpan.
       </div>
@@ -953,14 +962,20 @@ function dialogUnit() {
       </div>
     </form>`);
 
-  document.getElementById('formUnit').addEventListener('submit', e => {
+  document.getElementById('formUnit').addEventListener('submit', async e => {
     e.preventDefault();
     const nama = document.getElementById('unitBaru').value.trim();
     const err = document.getElementById('errUnit');
     const gagal = pesan => { err.innerHTML = `<div class="modal-bahaya" style="margin-top:14px">${esc(pesan)}</div>`; };
 
     if (nama.length < 3) return gagal('Nama unit kerja minimal 3 karakter.');
-    if (!DB.tambahUnit(nama)) return gagal('Unit kerja dengan nama itu sudah ada.');
+
+    if (adminSah()) {
+      const r = await SRV.tambahUnit(nama);
+      if (!r.ok) return gagal(r.pesan);
+    } else if (!DB.tambahUnit(nama)) {
+      return gagal('Unit kerja dengan nama itu sudah ada.');
+    }
 
     dialogUnit();
     render();
@@ -1001,7 +1016,7 @@ function dialogEditUnit(asal) {
       </div>
     </form>`);
 
-  document.getElementById('formEditUnit').addEventListener('submit', e => {
+  document.getElementById('formEditUnit').addEventListener('submit', async e => {
     e.preventDefault();
     const nama = document.getElementById('unitNama').value.trim();
     const err = document.getElementById('errEditUnit');
@@ -1012,7 +1027,13 @@ function dialogEditUnit(asal) {
 
     if (nama === u.nama) { dialogUnit(); return; }
 
-    DB.gantiNamaUnit(asal, nama);
+    if (adminSah()) {
+      // `asal` berisi id unit dari server, bukan nama bawaannya.
+      const r = await SRV.gantiNamaUnit(asal, nama);
+      if (!r.ok) return gagal(r.pesan);
+    } else {
+      DB.gantiNamaUnit(asal, nama);
+    }
     if (V.filterUnit === u.nama) V.filterUnit = nama;   // filter tabel ikut menyesuaikan
     dialogUnit();
     render();
@@ -1373,9 +1394,9 @@ function dataLaporan(jenis) {
 
   if (jenis === 'bulanan') {
     return {
-      kolom: ['NIP', 'Nama', 'Unit Kerja', 'Jabatan', 'Hari Kerja', 'Hadir', 'Terlambat', 'Izin', 'Kehadiran (%)'],
+      kolom: ['NIK', 'Nama', 'Unit Kerja', 'Jabatan', 'Hari Kerja', 'Hadir', 'Terlambat', 'Izin', 'Kehadiran (%)'],
       baris: saringUnit(rekapBulanan(tahun, bulan)).map(p =>
-        [p.nip, p.nama, p.unit, p.jabatan, p.hariKerja, p.hadir, p.terlambat, p.izin, p.persen]),
+        [p.nik, p.nama, p.unit, p.jabatan, p.hariKerja, p.hadir, p.terlambat, p.izin, p.persen]),
     };
   }
 
@@ -1406,9 +1427,9 @@ function dataLaporan(jenis) {
   }
 
   return {
-    kolom: ['NIP', 'Nama', 'Unit Kerja', 'Jabatan', 'Jam Masuk', 'Lokasi', 'Dalam Radius', 'Status'],
+    kolom: ['NIK', 'Nama', 'Unit Kerja', 'Jabatan', 'Jam Masuk', 'Lokasi', 'Dalam Radius', 'Status'],
     baris: saringUnit(DB.kehadiranHariIni).map(p =>
-      [p.nip, p.nama, p.unit, p.jabatan, jamTampil(p.jamMasuk), p.lokasi,
+      [p.nik, p.nama, p.unit, p.jabatan, jamTampil(p.jamMasuk), p.lokasi,
         p.jamMasuk === '—' ? '—' : (p.dalamRadius ? 'Ya' : 'Tidak'), p.status]),
   };
 }
@@ -1417,11 +1438,218 @@ function dataLaporan(jenis) {
    Render
    ============================================================ */
 
+/* ============================================================
+   View — Pendaftaran (daftar putih)
+   ------------------------------------------------------------
+   Pintu masuk satu-satunya ke sistem. Alamat Kompas terbuka di
+   internet; yang menahan orang luar membuat akun bukan kerahasiaan
+   alamatnya, melainkan daftar ini. Selama sebuah email belum ada di
+   sini, pendaftarannya ditolak server.
+   ============================================================ */
+
+function viewTerdaftar() {
+  const d = SRV.terdaftar;
+  const sudah = d.filter(x => x.sudah_daftar).length;
+
+  return `
+    ${stripStatistik([
+      { k: 'Didaftarkan', v: fmtAngka(d.length), n: 'boleh membuat akun' },
+      { k: 'Sudah punya akun', v: fmtAngka(sudah), n: 'sudah bisa absen' },
+      { k: 'Belum mendaftar', v: fmtAngka(d.length - sudah), n: 'perlu diingatkan' },
+    ], 'stat-3')}
+
+    <div class="panel" style="margin-top:22px">
+      <div class="panel-kepala">
+        <div>
+          <div class="t">Daftar yang boleh mendaftar</div>
+          <div class="s">Pegawai membuat kata sandinya sendiri — Anda tidak perlu tahu, dan tidak akan bisa melihatnya.</div>
+        </div>
+        <button class="btn btn-emas" data-aksi="tambahTerdaftar">
+          ${icon('plus', 16, 'currentColor', 2.6)} Daftarkan pegawai
+        </button>
+      </div>
+
+      ${d.length === 0 ? `
+        <div class="kosong" style="padding:38px 24px">
+          Belum ada seorang pun yang didaftarkan.<br>
+          Tekan <strong>Daftarkan pegawai</strong> untuk memasukkan email dan NIK mereka.
+        </div>` : `
+      <div class="tabel-bungkus">
+        <table class="tabel">
+          <thead>
+            <tr><th>Nama</th><th>Email</th><th>NIK</th><th>Unit Kerja</th><th>Peran</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody>
+            ${d.map(x => `
+              <tr>
+                <td>
+                  <div class="sel-pegawai">
+                    <div class="avatar">${esc(inisial(x.nama))}</div>
+                    <div><div class="nm">${esc(x.nama)}</div>
+                    <div class="sub">${esc(x.jabatan || '—')}</div></div>
+                  </div>
+                </td>
+                <td>${esc(x.email)}</td>
+                <td>${esc(samarkanNik(x.nik))}</td>
+                <td>${esc(x.unit)}</td>
+                <td>${x.peran === 'admin'
+                  ? '<span class="chip chip-yellow">Admin</span>'
+                  : '<span class="chip chip-grey">Pegawai</span>'}</td>
+                <td>${x.sudah_daftar
+                  ? '<span class="chip chip-green">Sudah punya akun</span>'
+                  : '<span class="chip chip-grey">Belum mendaftar</span>'}</td>
+                <td class="aksi-sel">
+                  ${x.sudah_daftar ? '' : `
+                    <button class="btn-ikon bahaya" data-aksi="hapusTerdaftar"
+                            data-id="${esc(x.id)}" data-nama="${esc(x.nama)}"
+                            title="Batalkan pendaftaran">
+                      ${icon('hapus', 16, 'currentColor', 2.4)}
+                    </button>`}
+                </td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`}
+    </div>
+
+    <div class="panel" style="margin-top:22px">
+      <div class="panel-kepala"><div><div class="t">Cara kerjanya</div></div></div>
+      <div style="padding:6px 24px 24px;font-size:13.5px;line-height:1.75;color:var(--text-2)">
+        <p style="margin:0 0 12px">
+          <strong>1.</strong> Anda memasukkan nama, email, dan NIK pegawai di sini.
+        </p>
+        <p style="margin:0 0 12px">
+          <strong>2.</strong> Pegawai membuka Kompas, menekan <em>Daftar</em>, memasukkan
+          emailnya, lalu membuat kata sandinya sendiri.
+        </p>
+        <p style="margin:0 0 12px">
+          <strong>3.</strong> NIK, nama, jabatan, dan unit diambil dari baris yang Anda isi —
+          bukan dari yang diketik pegawai. Tidak ada yang bisa mengarang NIK-nya sendiri.
+        </p>
+        <p style="margin:0">
+          Baris yang sudah berstatus <em>Sudah punya akun</em> tidak bisa dihapus dari sini,
+          karena akunnya sudah terlanjur terbentuk dan riwayat presensinya menggantung padanya.
+          Untuk menghentikan akses seseorang, nonaktifkan pegawainya di menu Pegawai.
+        </p>
+      </div>
+    </div>`;
+}
+
+/**
+ * NIK disamarkan di layar, hanya empat angka terakhir yang tampil.
+ *
+ * NIK adalah nomor KTP — dipakai untuk perbankan dan layanan publik,
+ * dan tidak seperti NIK, kebocorannya merugikan orangnya sendiri.
+ * Panel ini sering ditampilkan ke proyektor atau dilihat dari balik
+ * bahu; nilai penuhnya tetap tersimpan di server dan tetap ikut ke
+ * laporan resmi, tetapi tidak perlu terpampang sepanjang hari.
+ */
+function samarkanNik(nik) {
+  if (!nik) return '—';
+  const s = String(nik);
+  if (s.length <= 4) return s;
+  return '•'.repeat(s.length - 4) + s.slice(-4);
+}
+
+/** Formulir mendaftarkan pegawai ke daftar putih. */
+function dialogTambahTerdaftar() {
+  const unit = DB.unitServer || [];
+
+  bukaModal(`
+    <form id="formTerdaftar">
+      <div class="modal-head">
+        <div style="flex:1">
+          <div class="t">Daftarkan Pegawai</div>
+          <div class="s">Setelah ini, orangnya bisa membuat akun sendiri di Kompas.</div>
+        </div>
+        <button type="button" class="modal-tutup" data-aksi="tutupModal" aria-label="Tutup">
+          ${icon('close', 18, 'var(--text-2)', 2.4)}
+        </button>
+      </div>
+      <div class="modal-isi">
+        <div class="form-row">
+          <label for="tdNama">Nama lengkap</label>
+          <input id="tdNama" name="nama" type="text" required maxlength="80"
+                 placeholder="Nama sesuai kepegawaian">
+        </div>
+        <div class="form-row">
+          <label for="tdEmail">Email</label>
+          <input id="tdEmail" name="email" type="email" required
+                 inputmode="email" placeholder="nama@email.com">
+          <div class="form-bantu">Alamat ini yang dipakai masuk dan menerima tautan setel ulang sandi.</div>
+        </div>
+        <div class="pasangan">
+          <div class="form-row">
+            <label for="tdNik">NIK</label>
+            <input id="tdNik" name="nik" type="text" required inputmode="numeric"
+                   pattern="[0-9]{16}" maxlength="16" placeholder="16 angka">
+            <div class="form-bantu">Nomor KTP, tepat 16 angka.</div>
+          </div>
+          <div class="form-row">
+            <label for="tdJabatan">Jabatan</label>
+            <input id="tdJabatan" name="jabatan" type="text" maxlength="80"
+                   placeholder="Contoh: Staf Teknik">
+          </div>
+        </div>
+        <div class="pasangan">
+          <div class="form-row">
+            <label for="tdUnit">Unit kerja</label>
+            <select id="tdUnit" name="unitId" class="select-box" style="width:100%">
+              ${unit.map(u => `<option value="${esc(u.id)}">${esc(u.nama)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-row">
+            <label for="tdPeran">Peran</label>
+            <select id="tdPeran" name="peran" class="select-box" style="width:100%">
+              <option value="pegawai">Pegawai</option>
+              <option value="admin">Admin</option>
+            </select>
+            <div class="form-bantu">Admin bisa membuka panel ini dan melihat data semua orang.</div>
+          </div>
+        </div>
+        <div id="errTerdaftar"></div>
+      </div>
+      <div class="modal-kaki">
+        <button type="button" class="btn" data-aksi="tutupModal">Batal</button>
+        <button type="submit" class="btn btn-emas">Daftarkan</button>
+      </div>
+    </form>`);
+
+  document.getElementById('formTerdaftar').addEventListener('submit', async e => {
+    e.preventDefault();
+    const f = e.target;
+    const err = document.getElementById('errTerdaftar');
+    const gagal = p => { err.innerHTML = `<div class="modal-bahaya" style="margin-top:14px">${esc(p)}</div>`; };
+    const nik = f.nik.value.trim();
+
+    if (!/^[0-9]{16}$/.test(nik)) {
+      return gagal('NIK harus tepat 16 angka, tanpa spasi atau tanda baca.');
+    }
+
+    const tombol = f.querySelector('button[type="submit"]');
+    tombol.disabled = true; tombol.textContent = 'Menyimpan…';
+    err.innerHTML = '';
+
+    const r = await SRV.tambahTerdaftar({
+      nama: f.nama.value, email: f.email.value, nik,
+      jabatan: f.jabatan.value, unitId: f.unitId.value, peran: f.peran.value,
+    });
+
+    tombol.disabled = false; tombol.textContent = 'Daftarkan';
+    if (!r.ok) return gagal(r.pesan);
+
+    tutupModal();
+    render();
+    toast(r.pesan);
+  });
+}
+
 const VIEWS = {
   dashboard: viewDashboard,
   kehadiran: viewKehadiran,
   bukti: viewBukti,
   pegawai: viewPegawai,
+  terdaftar: viewTerdaftar,
   cuti: viewCuti,
   lokasi: viewLokasi,
   laporan: viewLaporan,
@@ -1530,14 +1758,14 @@ function renderGerbang() {
         </p>
 
         <div class="form-row">
-          <label for="admNip">NIP</label>
-          <input id="admNip" name="nip" type="text" autocomplete="username"
-                 value="${esc(AKUN_ADMIN.nip)}" placeholder="Nomor Induk Pegawai">
+          <label for="admEmail">Email</label>
+          <input id="admEmail" name="email" type="email" autocomplete="username"
+                 inputmode="email" placeholder="nama@email.com">
         </div>
         <div class="form-row">
           <label for="admSandi">Kata sandi</label>
           <input id="admSandi" name="sandi" type="password" autocomplete="current-password"
-                 value="${esc(AKUN_ADMIN.sandi)}" placeholder="Kata sandi">
+                 placeholder="Kata sandi">
         </div>
 
         <div id="errAdmin"></div>
@@ -1550,31 +1778,54 @@ function renderGerbang() {
           <a href="pegawai.html">Aplikasi pegawai</a>
         </div>
         <div class="masuk-catatan">
-          Prototipe demonstrasi — kredensial contoh sudah terisi. Pemeriksaan
-          sandi masih berjalan di peramban, sehingga belum menjadi pengamanan
-          sungguhan sampai backend dipasang.
+          Hanya akun berperan admin yang bisa membuka panel ini. Pemeriksaannya
+          berjalan di server: pegawai biasa yang memasukkan kredensialnya di
+          sini akan ditolak, dan datanya pun tidak akan terbaca.
         </div>
       </form>
     </div>`;
 
-  document.getElementById('formAdmin').addEventListener('submit', e => {
+  document.getElementById('formAdmin').addEventListener('submit', async e => {
     e.preventDefault();
-    const nip = document.getElementById('admNip').value.trim();
+    const email = document.getElementById('admEmail').value.trim();
     const sandi = document.getElementById('admSandi').value;
     const err = document.getElementById('errAdmin');
+    const tombol = e.target.querySelector('button[type="submit"]');
     const gagal = (pesan) => {
       err.innerHTML = `<div class="modal-bahaya" style="margin-top:16px">${esc(pesan)}</div>`;
     };
 
-    if (!nip || !sandi) return gagal('NIP dan kata sandi wajib diisi.');
-    if (nip !== AKUN_ADMIN.nip || sandi !== AKUN_ADMIN.sandi) {
-      return gagal('NIP atau kata sandi tidak cocok.');
-    }
+    if (!email || !sandi) return gagal('Email dan kata sandi wajib diisi.');
 
-    DB.simpanan.masukAdmin = true;
-    DB.tulis();
-    render();
-    toast(`Selamat datang, ${ADMIN.nama}.`);
+    err.innerHTML = '';
+    tombol.disabled = true;
+    const labelAsli = tombol.innerHTML;
+    tombol.textContent = 'Mohon tunggu…';
+
+    try {
+      const r = await AKUN.masuk(email, sandi);
+      if (!r.ok) return gagal(r.pesan);
+
+      // Pegawai biasa boleh punya akun, tetapi tidak boleh membuka panel
+      // ini. Sesinya dilepas kembali supaya tidak menggantung di perangkat
+      // orang lain — dan kalaupun tidak, kebijakan di server tetap menolak
+      // seluruh datanya.
+      if (AKUN.profil.peran !== 'admin') {
+        await AKUN.keluar();
+        return gagal('Akun ini bukan admin. Gunakan aplikasi pegawai.');
+      }
+
+      await muatDataAdmin();
+      render();
+      toast(`Selamat datang, ${AKUN.profil.nama}.`);
+    } catch (ex) {
+      gagal(pesanGalat(ex));
+    } finally {
+      if (document.body.contains(tombol)) {
+        tombol.disabled = false;
+        tombol.innerHTML = labelAsli;
+      }
+    }
   });
 }
 
@@ -1582,9 +1833,27 @@ function renderGerbang() {
    Render utama
    ============================================================ */
 
+/** Apakah pemilik sesi berhak membuka panel ini? */
+function adminSah() {
+  return AKUN.masuk_() && AKUN.profil.peran === 'admin';
+}
+
+/**
+ * Bukti absen pada tanggal yang sedang dipilih.
+ *
+ * Selama belum masuk, sumbernya data contoh dari data.js — dipakai
+ * hanya supaya galeri tidak kosong sebelum ada yang login. Sesudah
+ * masuk, seluruhnya dari server, termasuk kekosongannya.
+ */
+function buktiKini() {
+  return adminSah() ? SRV.bukti(V.buktiTanggal) : DB.bukti(V.buktiTanggal);
+}
+
 function render() {
-  // Selama belum masuk, tidak ada satu pun data panel yang dirender.
-  if (!DB.simpanan.masukAdmin) { renderGerbang(); return; }
+  // Selama belum masuk sebagai admin, tidak ada satu pun data panel
+  // yang dirender. Ini penjagaan tampilan; penjagaan sebenarnya ada di
+  // kebijakan server, yang menolak data walau layar ini dipaksa muncul.
+  if (!adminSah()) { renderGerbang(); return; }
 
   $gerbang.hidden = true;
   $gerbang.innerHTML = '';
@@ -1616,7 +1885,7 @@ const AKSI = {
       <div class="modal-head">
         <div style="flex:1">
           <div class="t">Keluar dari Panel Admin</div>
-          <div class="s">Anda perlu memasukkan NIP dan kata sandi lagi untuk kembali masuk.</div>
+          <div class="s">Anda perlu memasukkan NIK dan kata sandi lagi untuk kembali masuk.</div>
         </div>
         <button type="button" class="modal-tutup" data-aksi="tutupModal" aria-label="Tutup">
           ${icon('close', 18, 'var(--text-2)', 2.4)}
@@ -1630,10 +1899,20 @@ const AKSI = {
       </div>`);
   },
 
-  keluarPasti: () => {
+  keluarPasti: async () => {
     tutupModal();
-    DB.simpanan.masukAdmin = false;
-    DB.tulis();
+    await AKUN.keluar();
+
+    // Data yang sudah terlanjur diambil dibuang dari memori, bukan
+    // sekadar disembunyikan — panel ini bisa saja dibuka di komputer
+    // bersama, dan nama serta NIK pegawai tidak boleh tertinggal.
+    DB.pegawai = [];
+    DB.kehadiranHariIni = [];
+    DB.tren = [];
+    SRV.terdaftar = [];
+    SRV.pengajuan = [];
+    DB.simpanan.pengajuan = [];
+
     V.view = 'dashboard';       // sesi berikutnya mulai dari awal lagi
     V.cari = '';
     render();
@@ -1648,14 +1927,26 @@ const AKSI = {
 
   /* Kelola pegawai & unit kerja */
   tambahPegawai: () => dialogPegawai(null),
-  editPegawai: (el) => dialogPegawai(Number(el.dataset.id)),
-  hapusPegawai: (el) => dialogHapusPegawai(Number(el.dataset.id)),
+  tambahTerdaftar: () => dialogTambahTerdaftar(),
+
+  hapusTerdaftar: async (el) => {
+    const nama = el.dataset.nama || 'pegawai ini';
+    if (!confirm(`Batalkan pendaftaran ${nama}?\n\nOrangnya tidak akan bisa membuat akun sampai didaftarkan lagi.`)) return;
+    const r = await SRV.hapusTerdaftar(el.dataset.id);
+    render();
+    toast(r.ok ? `Pendaftaran ${nama} dibatalkan.` : r.pesan, r.ok ? 'err' : 'err');
+  },
+
+  // Id pegawai kini uuid dari server, bukan nomor urut. Membungkusnya
+  // dengan Number() akan menghasilkan NaN dan tidak pernah cocok.
+  editPegawai: (el) => dialogPegawai(el.dataset.id),
+  hapusPegawai: (el) => dialogHapusPegawai(el.dataset.id),
   kelolaUnit: () => dialogUnit(),
   editUnit: (el) => dialogEditUnit(el.dataset.asal),
   hapusUnit: (el) => dialogHapusUnit(el.dataset.asal),
   tutupModal: () => tutupModal(),
   konfirmasiHapus: (el) => {
-    const id = Number(el.dataset.id);
+    const id = el.dataset.id;
     const p = DB.pegawaiById(id);
     DB.hapusPegawai(id);
     tutupModal();
@@ -1673,27 +1964,27 @@ const AKSI = {
   exportKehadiranCSV: () => {
     const d = daftarKehadiranTersaring();
     exportCSV(`kehadiran-${kunciTanggal(new Date())}`,
-      ['NIP', 'Nama', 'Unit Kerja', 'Jabatan', 'Jam Masuk', 'Lokasi', 'Dalam Radius', 'Status'],
-      d.map(p => [p.nip, p.nama, p.unit, p.jabatan, p.jamMasuk, p.lokasi, p.jamMasuk === '—' ? '—' : (p.dalamRadius ? 'Ya' : 'Tidak'), p.status]));
+      ['NIK', 'Nama', 'Unit Kerja', 'Jabatan', 'Jam Masuk', 'Lokasi', 'Dalam Radius', 'Status'],
+      d.map(p => [p.nik, p.nama, p.unit, p.jabatan, p.jamMasuk, p.lokasi, p.jamMasuk === '—' ? '—' : (p.dalamRadius ? 'Ya' : 'Tidak'), p.status]));
     toast(`${d.length} baris diunduh sebagai CSV.`);
   },
   exportKehadiranPDF: () => {
     const d = daftarKehadiranTersaring();
     exportPDF('Rekap Kehadiran Harian', fmtTanggalPanjang(new Date()),
-      ['NIP', 'Nama', 'Unit Kerja', 'Jam Masuk', 'Lokasi', 'Status'],
-      d.map(p => [p.nip, p.nama, p.unit, p.jamMasuk, p.lokasi, p.status]));
+      ['NIK', 'Nama', 'Unit Kerja', 'Jam Masuk', 'Lokasi', 'Status'],
+      d.map(p => [p.nik, p.nama, p.unit, p.jamMasuk, p.lokasi, p.status]));
   },
-  lihatBukti: (el) => dialogBukti(Number(el.dataset.id)),
+  lihatBukti: (el) => dialogBukti(el.dataset.id),
 
   exportBuktiCSV: () => {
     const d = daftarBuktiTersaring();
     exportCSV(`bukti-absen-${V.buktiTanggal}`,
-      ['NIP', 'Nama', 'Unit Kerja', 'Tanggal', 'Jam Masuk', 'Jam Keluar', 'Status',
+      ['NIK', 'Nama', 'Unit Kerja', 'Tanggal', 'Jam Masuk', 'Jam Keluar', 'Status',
         'Latitude', 'Longitude', 'Jarak (m)', 'Akurasi (m)', 'Dalam Radius', 'Bukti Foto',
         'Perintah Gerak Datang', 'Verifikasi Datang', 'Perubahan Datang (%)',
         'Bukti Foto Pulang', 'Perintah Gerak Pulang', 'Verifikasi Pulang', 'Perubahan Pulang (%)'],
       d.map(b => [
-        b.nip, b.nama, b.unit, b.tanggal, b.jamMasuk, b.jamKeluar, b.status,
+        b.nik, b.nama, b.unit, b.tanggal, b.jamMasuk, b.jamKeluar, b.status,
         b.lat != null ? b.lat.toFixed(6) : '—',
         b.lng != null ? b.lng.toFixed(6) : '—',
         b.jarak ?? '—',
@@ -1713,8 +2004,8 @@ const AKSI = {
 
   exportPegawaiCSV: () => {
     exportCSV('data-pegawai',
-      ['NIP', 'Nama', 'Unit Kerja', 'Jabatan'],
-      DB.pegawai.map(p => [p.nip, p.nama, p.unit, p.jabatan]));
+      ['NIK', 'Nama', 'Unit Kerja', 'Jabatan'],
+      DB.pegawai.map(p => [p.nik, p.nama, p.unit, p.jabatan]));
     toast(`${DB.pegawai.length} pegawai diunduh sebagai CSV.`);
   },
   exportCutiCSV: () => {
@@ -1837,12 +2128,22 @@ const AKSI = {
   },
 };
 
-function ubahStatusPengajuan(id, status) {
+async function ubahStatusPengajuan(id, status) {
   const p = DB.pengajuan.find(x => x.id === id);
   if (!p || p.status !== 'Menunggu') return;
-  p.status = status;
-  p.diproses = kunciTanggal(new Date());
-  DB.tulis();
+
+  if (adminSah()) {
+    // Siapa yang memutuskan dan kapan dicatat server, bukan di sini —
+    // sebuah keputusan cuti harus bisa ditelusuri, dan catatan yang
+    // dibuat peramban tidak membuktikan apa pun.
+    const r = await SRV.putuskanPengajuan(id, status);
+    if (!r.ok) return toast(r.pesan, 'err');
+  } else {
+    p.status = status;
+    p.diproses = kunciTanggal(new Date());
+    DB.tulis();
+  }
+
   render();   // sidebar ikut dirender karena badge jumlah menunggu berubah
   toast(`Pengajuan ${p.nama} ${status.toLowerCase()}.`, status === 'Disetujui' ? 'ok' : 'err');
 }
@@ -1904,7 +2205,7 @@ function pasangFormKantor() {
     if (b) b.textContent = `${r} m`;
   };
   f.radius.addEventListener('input', tulisRadius);
-  f.addEventListener('submit', e => {
+  f.addEventListener('submit', async e => {
     e.preventDefault();
     const lat = parseFloat(f.lat.value);
     const lng = parseFloat(f.lng.value);
@@ -1915,12 +2216,21 @@ function pasangFormKantor() {
     if (!Number.isFinite(lng) || lng < -180 || lng > 180) { toast('Longitude harus antara -180 dan 180.', 'err'); return; }
     if (!Number.isFinite(radius) || radius < 20 || radius > 2000) { toast('Radius harus antara 20 dan 2000 meter.', 'err'); return; }
 
-    DB.simpanan.kantor = {
+    const kantor = {
       nama: f.nama.value.trim(),
       alamat: f.alamat.value.trim(),
       lat, lng, radius,
     };
-    DB.tulis();
+
+    if (adminSah()) {
+      // Disimpan di server, jadi seluruh perangkat langsung ikut. Tautan
+      // pengaturan antar perangkat yang dulu dipakai tidak diperlukan lagi.
+      const r = await SRV.simpanKantor(kantor);
+      if (!r.ok) { toast(r.pesan, 'err'); return; }
+    } else {
+      DB.simpanan.kantor = kantor;
+      DB.tulis();
+    }
     renderKonten();
     toast('Titik kantor tersimpan. Aplikasi pegawai memakai nilai baru ini.');
   });
@@ -1938,6 +2248,11 @@ window.addEventListener('storage', e => {
   if (e.key !== KUNCI_SIMPAN) return;
   if ($modal.innerHTML) return;
 
+  // Setelah admin masuk, seluruh data panel datang dari server.
+  // Membaca ulang localStorage di sini akan menimpanya dengan sisa data
+  // contoh yang masih tertinggal di perangkat.
+  if (adminSah()) return;
+
   const menungguLama = DB.pengajuanMenunggu().length;
   if (!DB.segarkanDariPenyimpanan()) return;
   render();
@@ -1954,3 +2269,21 @@ window.addEventListener('storage', e => {
 render();
 
 if (HASIL_SETUP) toast(HASIL_SETUP.pesan, HASIL_SETUP.ok ? 'ok' : 'err');
+
+/**
+ * Periksa sesi tersimpan, lalu buka panelnya bila memang admin.
+ *
+ * Gerbang masuk sudah tampil lebih dulu, jadi tidak ada layar kosong
+ * selama menunggu. Kalau sesinya milik pegawai biasa, gerbang itu
+ * tetap yang terlihat — dan server pun tidak akan menyerahkan datanya.
+ */
+(async () => {
+  try {
+    await AKUN.muat();
+    if (!adminSah()) return;
+    await muatDataAdmin();
+    render();
+  } catch (e) {
+    toast(pesanGalat(e), 'err');
+  }
+})();

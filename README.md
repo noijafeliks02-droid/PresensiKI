@@ -55,7 +55,7 @@ lewat manifest PWA sehingga terbuka layar penuh seperti aplikasi biasa.
 ## Memperagakan aplikasinya
 
 1. Buka `http://localhost:8080` → pilih **Aplikasi Pegawai**.
-2. Tekan **Masuk** (NIP dan kata sandi sudah terisi contoh).
+2. Tekan **Masuk** (NIK dan kata sandi sudah terisi contoh).
 3. Kalau Anda sedang tidak berada di titik kantor, tombol Check In akan
    nonaktif — itu memang perilaku yang benar. Ada dua cara mengatasinya
    saat demo:
@@ -115,7 +115,7 @@ Izin & Cuti · Lokasi Kantor · Laporan.
 - **Menu Bukti Absen**: galeri foto verifikasi wajah per check-in, bukan
   sekadar status hadir. Lihat bagian di bawah.
 - **Kelola data pegawai**: tambah, edit, dan hapus pegawai beserta unit kerja
-  dan jabatannya, lengkap dengan validasi (NIP harus angka 8–20 digit dan
+  dan jabatannya, lengkap dengan validasi (NIK harus tepat 16 angka dan
   tidak boleh kembar). Pemilik akun aplikasi pegawai dilindungi dari
   penghapusan, dan perubahan datanya langsung terlihat di aplikasi pegawai.
 - **Kelola unit kerja** lewat tombol **Unit Kerja** di menu Pegawai: tambah,
@@ -202,13 +202,13 @@ per pegawai — berisi foto verifikasi wajah, jam masuk, dan penanda merah
 **LUAR** bila check-in tercatat di luar radius kantor.
 
 Klik sebuah kartu untuk membuka detailnya: foto ukuran penuh berdampingan
-dengan sebelas baris metadata — NIP, unit kerja, jabatan, tanggal, jam masuk
+dengan sebelas baris metadata — NIK, unit kerja, jabatan, tanggal, jam masuk
 dan keluar, status, **koordinat lengkap**, jarak ke kantor, akurasi GPS, dan
 posisi dalam/luar radius. Inilah bahan yang dibutuhkan admin saat sebuah
 kehadiran perlu dipertanyakan.
 
 Penyaringnya: tanggal, ketersediaan foto (ada / tidak ada), status, unit kerja,
-dan pencarian nama atau NIP. Seluruh daftar dapat diunduh sebagai CSV lengkap
+dan pencarian nama atau NIK. Seluruh daftar dapat diunduh sebagai CSV lengkap
 dengan koordinat dan akurasinya.
 
 **Foto asli vs foto contoh.** Setiap kartu diberi penanda. Yang bertanda hijau

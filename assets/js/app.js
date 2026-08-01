@@ -1630,7 +1630,7 @@ function layarProfil() {
 
       <div class="bagian"><div class="eyebrow">Data kepegawaian</div></div>
       <div>
-        <div class="baris"><span class="kiri">NIP</span><span class="kanan tnum">${esc(AKU.nip)}</span></div>
+        <div class="baris"><span class="kiri">NIK</span><span class="kanan tnum">${esc(AKU.nik)}</span></div>
         <div class="baris"><span class="kiri">Unit kerja</span><span class="kanan">${esc(AKU.unit)}</span></div>
         <div class="baris"><span class="kiri">Jabatan</span><span class="kanan">${esc(AKU.jabatan)}</span></div>
         <div class="baris"><span class="kiri">Titik presensi</span><span class="kanan">${esc(DB.kantor.nama)}</span></div>
