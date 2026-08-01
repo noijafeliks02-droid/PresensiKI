@@ -1529,11 +1529,8 @@ function viewTerdaftar() {
     ], 'stat-3')}
 
     <div class="panel" style="margin-top:22px">
-      <div class="panel-kepala">
-        <div>
-          <div class="t">Daftar yang boleh mendaftar</div>
-          <div class="s">Pegawai membuat kata sandinya sendiri — Anda tidak perlu tahu, dan tidak akan bisa melihatnya.</div>
-        </div>
+      <div class="panel-head">
+        <div><div class="t">Daftar yang boleh mendaftar</div></div>
         <button class="btn btn-emas" data-aksi="tambahTerdaftar">
           ${icon('plus', 16, 'currentColor', 2.6)} Daftarkan pegawai
         </button>
@@ -1583,7 +1580,7 @@ function viewTerdaftar() {
     </div>
 
     <div class="panel" style="margin-top:22px">
-      <div class="panel-kepala"><div><div class="t">Cara kerjanya</div></div></div>
+      <div class="panel-head"><div><div class="t">Cara kerjanya</div></div></div>
       <div style="padding:6px 24px 24px;font-size:13.5px;line-height:1.75;color:var(--text-2)">
         <p style="margin:0 0 12px">
           <strong>1.</strong> Anda memasukkan nama, email, dan NIK pegawai di sini.
