@@ -2151,7 +2151,7 @@ function pasangFormHandler() {
       document.getElementById('namaLampiran').textContent = f.name;
     });
 
-    cuti.addEventListener('submit', e => {
+    cuti.addEventListener('submit', async e => {
       e.preventDefault();
       sinkron();
       const { mulai, selesai, alasan, jenis } = S.form;
@@ -2165,19 +2165,29 @@ function pasangFormHandler() {
         return;
       }
 
-      DB.simpanan.pengajuan.unshift({
-        id: 'P' + Date.now(),
-        pegawaiId: 1,
-        nama: AKU.nama,
-        inisial: inisialAku,
-        unit: AKU.unit,
-        jenis, mulai, selesai, hari,
-        alasan: alasan.trim(),
-        lampiran: S.form.lampiran || null,
-        status: 'Menunggu',
-        dibuat: kunciTanggal(new Date()),
-      });
-      DB.tulis();
+      if (AKUN.masuk_()) {
+        // Dikirim ke server, bukan disimpan di HP. Sebelumnya tersimpan
+        // di localStorage sementara panel admin membaca dari server —
+        // pengajuannya tidak pernah sampai ke siapa pun, padahal
+        // aplikasi tetap menjawab "terkirim ke atasan".
+        const r = await PRESENSI.kirimPengajuan({ jenis, mulai, selesai, hari, alasan });
+        if (!r.ok) { toast(r.pesan, 'err'); return; }
+      } else {
+        DB.simpanan.pengajuan.unshift({
+          id: 'P' + Date.now(),
+          pegawaiId: 1,
+          nama: AKU.nama,
+          inisial: inisialAku,
+          unit: AKU.unit,
+          jenis, mulai, selesai, hari,
+          alasan: alasan.trim(),
+          lampiran: S.form.lampiran || null,
+          status: 'Menunggu',
+          dibuat: kunciTanggal(new Date()),
+        });
+        DB.tulis();
+      }
+
       S.form = { jenis: 'Izin', mulai: '', selesai: '', alasan: '', lampiran: '' };
       pindah('cuti');
       toast('Pengajuan terkirim ke atasan.');

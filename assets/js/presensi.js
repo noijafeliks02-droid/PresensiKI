@@ -272,6 +272,72 @@ const PRESENSI = {
   },
 
   /* ============================================================
+     Pengajuan izin & cuti
+     ------------------------------------------------------------
+     Dulu tersimpan di localStorage, sementara panel admin membacanya
+     dari server — pengajuan pegawai tidak pernah sampai ke siapa pun,
+     padahal aplikasi menjawab "Pengajuan terkirim ke atasan".
+     ============================================================ */
+
+  async muatPengajuanSaya() {
+    if (!AKUN.profil) { DB.simpanan.pengajuan = []; return []; }
+    const { data, error } = await SB
+      .from('pengajuan')
+      .select('*')
+      .eq('pegawai_id', AKUN.profil.id)
+      .order('mulai', { ascending: false });
+
+    if (error) { DB.simpanan.pengajuan = []; return []; }
+
+    DB.simpanan.pengajuan = data.map(p => ({
+      id: p.id,
+      pegawaiId: p.pegawai_id,
+      nama: AKUN.profil.nama,
+      inisial: AKUN.profil.inisial,
+      unit: AKUN.profil.unit,
+      jenis: p.jenis,
+      mulai: p.mulai,
+      selesai: p.selesai,
+      hari: p.hari,
+      alasan: p.alasan,
+      status: p.status,
+      catatanAdmin: p.catatan_admin,
+      dibuat: p.dibuat?.slice(0, 10),
+    }));
+    return DB.simpanan.pengajuan;
+  },
+
+  /**
+   * Kirim pengajuan baru.
+   *
+   * Statusnya tidak dikirim — kebijakan server hanya menerima
+   * 'Menunggu', jadi tidak ada cara mengajukan cuti yang langsung
+   * berstatus disetujui.
+   */
+  async kirimPengajuan({ jenis, mulai, selesai, hari, alasan }) {
+    if (!AKUN.profil) return { ok: false, pesan: 'Anda belum masuk.' };
+
+    const { error } = await SB.from('pengajuan').insert({
+      pegawai_id: AKUN.profil.id,
+      jenis, mulai, selesai, hari,
+      alasan: alasan.trim(),
+      status: 'Menunggu',
+    });
+    if (error) return { ok: false, pesan: pesanGalat(error) };
+
+    await this.muatPengajuanSaya();
+    return { ok: true, pesan: 'Pengajuan terkirim ke atasan.' };
+  },
+
+  /** Tarik kembali pengajuan yang belum diputus. */
+  async tarikPengajuan(id) {
+    const { error } = await SB.from('pengajuan').delete().eq('id', id);
+    if (error) return { ok: false, pesan: pesanGalat(error) };
+    await this.muatPengajuanSaya();
+    return { ok: true, pesan: 'Pengajuan ditarik.' };
+  },
+
+  /* ============================================================
      Muat semuanya sekaligus
      ============================================================ */
 
@@ -279,6 +345,7 @@ const PRESENSI = {
     await this.muatPengaturan();
     await this.muatHariIni();
     await this.muatRiwayat();
+    await this.muatPengajuanSaya();
 
     // Presensi hari ini ditaruh di tempat lama supaya seluruh kode
     // layar membacanya seperti sebelumnya.

@@ -884,7 +884,17 @@ const DB = {
   get presensi() { return this.simpanan.presensi; },
   get pengajuan() { return this.simpanan.pengajuan; },
 
-  pengajuanSaya() { return this.pengajuan.filter(p => p.pegawaiId === 1); },
+  /**
+   * Pengajuan milik pemilik akun.
+   *
+   * Setelah masuk, disaring dengan id akun dari server. Dulu dipatok ke
+   * angka 1 — id pegawai contoh — dan itu tidak akan pernah cocok dengan
+   * id server, sehingga daftar izin pegawai selalu tampil kosong.
+   */
+  pengajuanSaya() {
+    const id = (typeof AKUN !== 'undefined' && AKUN.profil) ? AKUN.profil.id : 1;
+    return this.pengajuan.filter(p => p.pegawaiId === id);
+  },
   pengajuanMenunggu() { return this.pengajuan.filter(p => p.status === 'Menunggu'); },
 
   /** Ringkasan angka untuk kartu statistik dashboard admin. */
