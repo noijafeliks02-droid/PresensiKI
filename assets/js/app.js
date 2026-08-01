@@ -2147,7 +2147,12 @@ function pasangFormHandler() {
         cuti.lampiran.value = '';
         return;
       }
+      // Berkasnya sendiri disimpan, bukan cuma namanya. Sebelumnya hanya
+      // nama yang dicatat — pegawai melihat nama surat dokternya muncul
+      // di layar dan mengira sudah terlampir, padahal tidak ada apa pun
+      // yang terkirim.
       S.form.lampiran = f.name;
+      S.form.lampiranBerkas = f;
       document.getElementById('namaLampiran').textContent = f.name;
     });
 
@@ -2170,8 +2175,20 @@ function pasangFormHandler() {
         // di localStorage sementara panel admin membaca dari server —
         // pengajuannya tidak pernah sampai ke siapa pun, padahal
         // aplikasi tetap menjawab "terkirim ke atasan".
-        const r = await PRESENSI.kirimPengajuan({ jenis, mulai, selesai, hari, alasan });
+        const tombol = cuti.querySelector('button[type="submit"]');
+        const label = tombol ? tombol.innerHTML : '';
+        if (tombol) { tombol.disabled = true; tombol.textContent = 'Mengirim…'; }
+
+        const r = await PRESENSI.kirimPengajuan({
+          jenis, mulai, selesai, hari, alasan,
+          berkas: S.form.lampiranBerkas || null,
+        });
+
+        if (tombol && document.body.contains(tombol)) {
+          tombol.disabled = false; tombol.innerHTML = label;
+        }
         if (!r.ok) { toast(r.pesan, 'err'); return; }
+        S.form.lampiranBerkas = null;
       } else {
         DB.simpanan.pengajuan.unshift({
           id: 'P' + Date.now(),

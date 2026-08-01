@@ -1186,6 +1186,26 @@ function unitPengajuan(p) {
   return DB.pegawaiById(p.pegawaiId)?.unit ?? p.unit;
 }
 
+/**
+ * Lampiran pengajuan, sebagai tautan yang benar-benar bisa dibuka.
+ *
+ * Dulu hanya nama berkasnya yang ditampilkan — dan itu pun cuma nama
+ * yang diketik ulang oleh aplikasi pegawai, karena berkasnya tidak
+ * pernah terkirim ke mana pun. Admin melihat "surat-dokter.pdf" dan
+ * mengira suratnya ada.
+ */
+function lampiranTeks(p) {
+  if (!p.lampiran) return '';
+  if (!p.lampiranUrl) {
+    return '<div class="sub-tabel">Lampiran tidak dapat dibuka</div>';
+  }
+  const pdf = /\.pdf$/i.test(p.lampiran);
+  return `<div class="sub-tabel">
+    <a href="${esc(p.lampiranUrl)}" target="_blank" rel="noopener">
+      ${pdf ? 'Buka lampiran (PDF)' : 'Buka lampiran (gambar)'}
+    </a></div>`;
+}
+
 function viewCuti() {
   const q = V.cari.trim().toLowerCase();
   const semua = DB.pengajuan.filter(p => !q || p.nama.toLowerCase().includes(q));
@@ -1218,7 +1238,7 @@ function viewCuti() {
                 <div><div class="nama-tabel">${esc(p.nama)}</div><div class="sub-tabel">${esc(unitPengajuan(p))}</div></div></div></td>
               <td><div class="nama-tabel" style="font-size:13px">${esc(p.jenis)}</div><div class="sub-tabel">${p.hari} hari</div></td>
               <td>${periodeTeks(p)}</td>
-              <td style="max-width:240px">${esc(p.alasan)}${p.lampiran ? `<div class="sub-tabel">📎 ${esc(p.lampiran)}</div>` : ''}</td>
+              <td style="max-width:240px">${esc(p.alasan)}${lampiranTeks(p)}</td>
               <td style="text-align:right">
                 ${p.status === 'Menunggu' ? `
                   <div class="aksi-baris" style="justify-content:flex-end">

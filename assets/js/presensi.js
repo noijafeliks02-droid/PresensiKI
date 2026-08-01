@@ -314,19 +314,75 @@ const PRESENSI = {
    * 'Menunggu', jadi tidak ada cara mengajukan cuti yang langsung
    * berstatus disetujui.
    */
-  async kirimPengajuan({ jenis, mulai, selesai, hari, alasan }) {
+  async kirimPengajuan({ jenis, mulai, selesai, hari, alasan, berkas }) {
     if (!AKUN.profil) return { ok: false, pesan: 'Anda belum masuk.' };
 
-    const { error } = await SB.from('pengajuan').insert({
+    // Lampiran diunggah lebih dulu. Kalau gagal, pengajuannya dibatalkan
+    // sekalian — beda dengan foto presensi. Surat dokter sering justru
+    // ISI dari pengajuannya; mengirim "Sakit" tanpa suratnya membuat
+    // pegawai mengira buktinya sudah sampai padahal belum.
+    let jalur = null;
+    if (berkas) {
+      const r = await this.unggahLampiran(berkas);
+      if (!r.ok) return r;
+      jalur = r.jalur;
+    }
+
+    const baris = {
       pegawai_id: AKUN.profil.id,
       jenis, mulai, selesai, hari,
       alasan: alasan.trim(),
       status: 'Menunggu',
-    });
-    if (error) return { ok: false, pesan: pesanGalat(error) };
+    };
+    // Kolom `lampiran` baru ada setelah 05-lanjutan.sql dijalankan.
+    // Disertakan hanya bila memang ada lampirannya, supaya pengajuan
+    // biasa tetap bisa dikirim pada basis data yang belum diperbarui —
+    // satu perubahan skema yang belum dijalankan tidak boleh membuat
+    // seluruh pengajuan izin berhenti bekerja.
+    if (jalur) baris.lampiran = jalur;
+
+    const { error } = await SB.from('pengajuan').insert(baris);
+    if (error) {
+      if (/lampiran/i.test(String(error.message || ''))) {
+        return { ok: false, pesan: 'Basis data belum menerima lampiran. Jalankan 05-lanjutan.sql lebih dulu, atau kirim tanpa lampiran.' };
+      }
+      return { ok: false, pesan: pesanGalat(error) };
+    }
 
     await this.muatPengajuanSaya();
-    return { ok: true, pesan: 'Pengajuan terkirim ke atasan.' };
+    return {
+      ok: true,
+      pesan: jalur ? 'Pengajuan dan lampirannya terkirim.' : 'Pengajuan terkirim ke atasan.',
+    };
+  },
+
+  /** Batas ukuran lampiran, sama dengan yang tertulis di layar. */
+  LAMPIRAN_MAKS: 5 * 1024 * 1024,
+
+  JENIS_LAMPIRAN: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'],
+
+  async unggahLampiran(berkas) {
+    if (berkas.size > this.LAMPIRAN_MAKS) {
+      return { ok: false, pesan: 'Ukuran lampiran melebihi 5 MB.' };
+    }
+    if (!this.JENIS_LAMPIRAN.includes(berkas.type)) {
+      return { ok: false, pesan: 'Lampiran harus berupa JPG, PNG, atau PDF.' };
+    }
+
+    // Akhiran nama berkas dipertahankan supaya admin tahu ini PDF atau
+    // gambar sebelum membukanya. Nama aslinya TIDAK dipakai: nama berkas
+    // dari perangkat orang bisa memuat apa saja, termasuk karakter yang
+    // merusak jalur penyimpanan.
+    const akhiran = berkas.type === 'application/pdf' ? 'pdf'
+      : (berkas.type === 'image/png' ? 'png' : 'jpg');
+    const jalur = `${AKUN.profil.id}/lampiran-${Date.now()}.${akhiran}`;
+
+    const { error } = await SB.storage
+      .from(this.BUCKET)
+      .upload(jalur, berkas, { contentType: berkas.type, upsert: false });
+
+    if (error) return { ok: false, pesan: pesanGalat(error) };
+    return { ok: true, jalur };
   },
 
   /** Tarik kembali pengajuan yang belum diputus. */

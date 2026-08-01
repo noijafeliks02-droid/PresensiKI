@@ -400,8 +400,22 @@ const SRV = {
       hari: p.hari,
       alasan: p.alasan,
       status: p.status,
+      lampiran: p.lampiran,
       dibuat: p.dibuat?.slice(0, 10),
     }));
+
+    // Tautan lampiran dibuatkan sekaligus, seperti foto bukti.
+    const jalur = this.pengajuan.map(p => p.lampiran).filter(Boolean);
+    if (jalur.length) {
+      const { data: t, error: e2 } = await SB.storage
+        .from(PRESENSI.BUCKET)
+        .createSignedUrls(jalur, PRESENSI.UMUR_TAUTAN);
+      if (!e2) {
+        const peta = new Map(t.filter(x => x.signedUrl).map(x => [x.path, x.signedUrl]));
+        this.pengajuan.forEach(p => { p.lampiranUrl = p.lampiran ? peta.get(p.lampiran) || null : null; });
+      }
+    }
+
     DB.simpanan.pengajuan = this.pengajuan;
     return this.pengajuan;
   },
