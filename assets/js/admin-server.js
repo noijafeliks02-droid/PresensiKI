@@ -50,6 +50,43 @@ const SRV = {
     return DB.pegawai;
   },
 
+  /**
+   * Sunting data pegawai yang sudah punya akun.
+   *
+   * Tidak ada fungsi "tambah pegawai": barisnya dibuat pemicu server
+   * saat orangnya mendaftar. Menambahkannya dari panel akan membuat
+   * baris tanpa akun — tidak ada yang bisa memakainya untuk absen.
+   */
+  async simpanPegawai(id, { nama, nik, jabatan, unit }) {
+    const u = (DB.unitServer || []).find(x => x.nama === unit);
+    const { error } = await SB.from('pegawai').update({
+      nama: nama.trim(),
+      nik: nik.trim(),
+      jabatan: jabatan.trim() || null,
+      unit_id: u ? u.id : null,
+    }).eq('id', id);
+
+    if (error) return { ok: false, pesan: this.pesanTerdaftar(error) };
+    await this.muatPegawai();
+    await this.muatKehadiran();
+    return { ok: true };
+  },
+
+  /**
+   * Nonaktifkan pegawai — bukan hapus.
+   *
+   * Menghapus barisnya akan ikut menghapus seluruh riwayat presensinya,
+   * dan riwayat itu dokumen kepegawaian. Yang dihentikan hanya aksesnya:
+   * sesi berikutnya ditolak, dan namanya keluar dari daftar aktif.
+   */
+  async nonaktifkanPegawai(id) {
+    const { error } = await SB.from('pegawai').update({ aktif: false }).eq('id', id);
+    if (error) return { ok: false, pesan: pesanGalat(error) };
+    await this.muatPegawai();
+    await this.muatKehadiran();
+    return { ok: true };
+  },
+
   /* ============================================================
      Kehadiran hari ini
      ------------------------------------------------------------

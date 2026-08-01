@@ -513,8 +513,24 @@ const DB = {
      Roster pegawai
      ============================================================ */
 
-  /** Bangun ulang daftar pegawai dari roster dasar + suntingan admin. */
+  /**
+   * Bangun ulang daftar pegawai dari roster dasar + suntingan admin.
+   *
+   * PENJAGA: begitu roster datang dari server, fungsi ini tidak boleh
+   * berjalan sama sekali. Isinya membangun ulang 26 pegawai contoh dan
+   * menimpa `this.pegawai` — pernah terjadi, dan akibatnya daftar
+   * pegawai sungguhan lenyap diganti nama-nama karangan lengkap dengan
+   * unit "Ditjen" yang sudah tidak dipakai.
+   *
+   * Penjagaannya ditaruh di sini, bukan di tiap pemanggil, supaya jalur
+   * lama mana pun yang terlewat tidak bisa merusak data nyata.
+   */
   susunPegawai() {
+    if (this.pegawaiServer) {
+      this.pegawai = this.pegawaiServer.filter(p => p.aktif);
+      return;
+    }
+
     const s = this.simpanan;
     const dihapus = new Set(s.pegawaiHapus);
 

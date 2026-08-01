@@ -730,8 +730,24 @@ function viewPegawai() {
     <div style="flex:1"></div>
     <button class="btn" data-aksi="kelolaUnit">${icon('building-2', 16, 'currentColor')} Unit Kerja</button>
     <button class="btn" data-aksi="exportPegawaiCSV">${icon('download', 16, 'currentColor')} Excel</button>
-    <button class="btn btn-emas" data-aksi="tambahPegawai">${icon('user-plus', 16, 'currentColor')} Tambah Pegawai</button>
+    ${adminSah()
+      // Baris pegawai dibuat OTOMATIS saat orangnya mendaftar; tidak ada
+      // lagi cara menambahkannya dari sini, dan memaksakannya dulu justru
+      // menimpa roster server dengan data contoh. Yang menentukan siapa
+      // boleh punya akun adalah menu Pendaftaran.
+      ? `<button class="btn btn-emas" data-aksi="keTerdaftar">${icon('user-plus', 16, 'currentColor')} Daftarkan Pegawai</button>`
+      : `<button class="btn btn-emas" data-aksi="tambahPegawai">${icon('user-plus', 16, 'currentColor')} Tambah Pegawai</button>`}
   </div>
+
+  ${adminSah() ? `
+    <div class="panel" style="margin-bottom:20px;border-left:3px solid var(--gold)">
+      <div style="padding:16px 20px;font-size:13.5px;line-height:1.7;color:var(--text-2)">
+        Daftar ini berisi pegawai yang <strong>sudah punya akun</strong>. Barisnya
+        terbentuk sendiri saat orangnya mendaftar di Kompas — tidak ditambahkan
+        dari sini. Untuk memberi akses kepada orang baru, buka
+        <strong>Pendaftaran</strong>.
+      </div>
+    </div>` : ''}
 
   <div class="panel" style="margin-bottom:20px">
     <div class="panel-head"><div class="t">Sebaran Pegawai per Unit Kerja</div></div>
@@ -877,7 +893,7 @@ function dialogPegawai(id) {
     if (baru) f.unitBaru.focus();
   });
 
-  f.addEventListener('submit', e => {
+  f.addEventListener('submit', async e => {
     e.preventDefault();
     const err = document.getElementById('errPegawai');
     const gagal = pesan => { err.innerHTML = `<div class="modal-bahaya" style="margin-top:16px">${esc(pesan)}</div>`; };
@@ -895,11 +911,27 @@ function dialogPegawai(id) {
     if (unit === '__baru__') {
       const namaUnit = f.unitBaru.value.trim();
       if (namaUnit.length < 3) return gagal('Nama unit kerja baru minimal 3 karakter.');
-      DB.tambahUnit(namaUnit);
+      if (adminSah()) {
+        const ru = await SRV.tambahUnit(namaUnit);
+        if (!ru.ok) return gagal(ru.pesan);
+      } else {
+        DB.tambahUnit(namaUnit);
+      }
       unit = namaUnit;
     }
 
-    DB.simpanPegawai({ id: id ?? null, nama, nik, unit, jabatan });
+    if (adminSah()) {
+      // Baris pegawai tidak pernah dibuat dari sini — hanya disunting.
+      // Yang membuatnya adalah pemicu pendaftaran di server.
+      if (id == null) {
+        return gagal('Pegawai baru tidak ditambahkan dari sini. Buka menu Pendaftaran.');
+      }
+      const r = await SRV.simpanPegawai(id, { nama, nik, jabatan, unit });
+      if (!r.ok) return gagal(r.pesan);
+    } else {
+      DB.simpanPegawai({ id: id ?? null, nama, nik, unit, jabatan });
+    }
+
     tutupModal();
     render();
     toast(id == null ? `Pegawai ${nama} ditambahkan.` : `Data ${nama} diperbarui.`);
@@ -1995,14 +2027,28 @@ const AKSI = {
   editUnit: (el) => dialogEditUnit(el.dataset.asal),
   hapusUnit: (el) => dialogHapusUnit(el.dataset.asal),
   tutupModal: () => tutupModal(),
-  konfirmasiHapus: (el) => {
+  konfirmasiHapus: async (el) => {
     const id = el.dataset.id;
     const p = DB.pegawaiById(id);
+
+    if (adminSah()) {
+      // Dinonaktifkan, bukan dihapus: riwayat presensinya dokumen
+      // kepegawaian dan ikut lenyap kalau barisnya dibuang.
+      const r = await SRV.nonaktifkanPegawai(id);
+      if (!r.ok) { toast(r.pesan, 'err'); return; }
+      tutupModal();
+      render();
+      toast(`${p ? p.nama : 'Pegawai'} dinonaktifkan. Riwayat presensinya tetap tersimpan.`, 'err');
+      return;
+    }
+
     DB.hapusPegawai(id);
     tutupModal();
     render();
     toast(`${p ? p.nama : 'Pegawai'} dihapus dari data induk.`, 'err');
   },
+
+  keTerdaftar: () => pindahView('terdaftar'),
 
   setujui: (el) => ubahStatusPengajuan(el.dataset.id, 'Disetujui'),
   tolak: (el) => ubahStatusPengajuan(el.dataset.id, 'Ditolak'),
