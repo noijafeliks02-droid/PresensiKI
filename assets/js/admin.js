@@ -31,7 +31,23 @@ const $topbar = document.getElementById('topbar');
 const $konten = document.getElementById('konten');
 const $toast = document.getElementById('toast');
 
-const ADMIN = { nama: 'Admin Kepegawaian', unit: 'Biro SDM', inisial: 'HR' };
+/**
+ * Identitas yang tampil di kaki sidebar dan di kop laporan cetak.
+ *
+ * Diambil dari akun yang sedang masuk. Nilai di bawah hanya cadangan
+ * sebelum sesi terbaca — dan tidak boleh tertinggal di layar setelah
+ * itu, karena laporan yang dicetak mencantumkan siapa yang mencetaknya.
+ */
+const ADMIN_CADANGAN = { nama: 'Admin', unit: '—', inisial: 'AD' };
+
+function adminKini() {
+  if (!AKUN.profil) return ADMIN_CADANGAN;
+  return {
+    nama: AKUN.profil.nama,
+    unit: AKUN.profil.unit,
+    inisial: AKUN.profil.inisial,
+  };
+}
 
 /* ============================================================
    Utilitas
@@ -113,10 +129,10 @@ function renderSidebar() {
         </button>
       </div>
       <div class="sidebar-foot">
-        <div class="av">${ADMIN.inisial}</div>
+        <div class="av">${esc(adminKini().inisial)}</div>
         <div style="flex:1;min-width:0">
-          <div class="nm">${ADMIN.nama}</div>
-          <div class="rl">${ADMIN.unit}</div>
+          <div class="nm">${esc(adminKini().nama)}</div>
+          <div class="rl">${esc(adminKini().unit)}</div>
         </div>
       </div>
       <button class="tombol-keluar" data-aksi="keluar">
@@ -245,12 +261,34 @@ function viewDashboard() {
 
 /**
  * Sebaran posisi check-in di sekitar kantor.
- * Dibangkitkan deterministik lalu diubah dari (jarak, arah) menjadi
- * koordinat sungguhan, sehingga titiknya jatuh di tempat yang masuk akal
- * pada peta asli — bukan sekadar hiasan.
+ *
+ * Setelah admin masuk, titiknya adalah koordinat GPS SUNGGUHAN dari
+ * presensi hari ini. Kosong berarti memang belum ada yang absen.
+ *
+ * Panel ini bertuliskan "Real-time", dan dulu isinya 18 titik karangan
+ * yang selalu digambar berapa pun jumlah absen sebenarnya. Pada
+ * prototipe tanpa server itu sekadar hiasan; dengan data sungguhan itu
+ * kebohongan tentang hal yang justru paling ingin diperiksa admin —
+ * siapa absen dari mana.
  */
 function titikSebaran() {
   const k = DB.kantor;
+
+  if (adminSah()) {
+    return DB.kehadiranHariIni
+      .filter(p => p.lat != null && p.lng != null)
+      .map(p => {
+        const dalam = p.dalamRadius;
+        return {
+          lat: p.lat, lng: p.lng,
+          warna: dalam ? 'var(--user-dot)' : 'var(--red)',
+          // Posisi persen untuk peta ilustratif saat Leaflet gagal dimuat.
+          x: 50 + (p.lng - k.lng) * 4000,
+          y: 50 - (p.lat - k.lat) * 4000,
+        };
+      });
+  }
+
   const rng = bikinRng(31337);
   const mPerLat = 111320;
   const mPerLng = 111320 * Math.cos(k.lat * Math.PI / 180);
@@ -2042,7 +2080,7 @@ const AKSI = {
   laporanPDF: (el) => {
     const jenis = el.dataset.jenis;
     const { kolom, baris } = dataLaporan(jenis);
-    exportPDF(judulLaporan(jenis), `${DB.kantor.nama} · dicetak oleh ${ADMIN.nama}`, kolom, baris);
+    exportPDF(judulLaporan(jenis), `${DB.kantor.nama} · dicetak oleh ${adminKini().nama}`, kolom, baris);
   },
 
   /* Lokasi kantor */
