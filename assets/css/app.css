@@ -275,6 +275,15 @@
 
 .ket-izin { margin-top: 12px; text-align: center; font-size: 12px; font-weight: 600; color: var(--mut); }
 
+/* Keterangan bahwa kuota hanya berlaku untuk Cuti Tahunan. Diletakkan
+   tepat di bawah bilah saldo, karena di situlah salah pahamnya muncul:
+   panel saldo berdiri di atas daftar yang memuat Izin dan Sakit juga. */
+.ket-kuota {
+  margin-top: 10px; font-size: 12px; font-weight: 600;
+  line-height: 1.55; color: var(--mut);
+}
+.ket-kuota strong { color: var(--ink); font-weight: 800; }
+
 /* ---------- Peta / verifikasi lokasi ---------- */
 .peta-layar { position: absolute; inset: 0; background: var(--paper); overflow: hidden; }
 .peta-wadah { position: absolute; top: 0; left: 0; right: 0; height: 430px; background: var(--mapBg); }

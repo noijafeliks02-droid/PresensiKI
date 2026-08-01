@@ -430,12 +430,28 @@ function layarHome() {
   </div>`;
 }
 
-/** Saldo cuti tahunan, memperhitungkan pengajuan yang sudah disetujui. */
+/**
+ * Saldo cuti tahunan.
+ *
+ * HANYA 'Cuti Tahunan' yang mengurangi kuota. Izin dan Sakit tidak
+ * dibatasi — orang tidak bisa menjadwalkan kapan dia sakit, dan
+ * memberinya jatah berarti menghukum orang karena jatuh sakit terlalu
+ * sering. Keduanya tetap butuh persetujuan atasan, dan di situlah
+ * kendalinya, bukan di angka kuota.
+ *
+ * Angka awalnya nol. Sebelumnya dimulai dari AKU.cutiTerpakai — nilai
+ * dari data contoh — sehingga pegawai yang belum pernah mengambil cuti
+ * sekali pun sudah tercatat memakai 4 hari.
+ */
 function hitungSisaCuti() {
+  const kuota = AKU.cutiKuota ?? 12;
+  const awal = AKUN.masuk_() ? 0 : (AKU.cutiTerpakai ?? 0);
+
   const terpakai = DB.pengajuanSaya()
     .filter(p => p.status === 'Disetujui' && p.jenis === 'Cuti Tahunan')
-    .reduce((n, p) => n + p.hari, AKU.cutiTerpakai ?? 0);
-  return { terpakai, sisa: Math.max(0, (AKU.cutiKuota ?? 12) - terpakai), kuota: AKU.cutiKuota ?? 12 };
+    .reduce((n, p) => n + p.hari, awal);
+
+  return { terpakai, sisa: Math.max(0, kuota - terpakai), kuota };
 }
 
 /* ============================================================
@@ -1487,7 +1503,13 @@ function layarRiwayat() {
 function layarCuti() {
   const milik = DB.pengajuanSaya();
   const c = hitungSisaCuti();
-  const persen = Math.round(c.terpakai / c.kuota * 100);
+
+  /* Bilahnya mengikuti SISA, sama dengan angka besar di sebelahnya.
+     Sebelumnya angka besarnya sisa (8) sementara bilahnya terisi menurut
+     terpakai (33%) — angka besar "8" di samping bilah sepertiga penuh
+     terbaca sebagai "8 dari 12 sudah dipakai". Keduanya kini bercerita
+     hal yang sama: yang tersisa. Bilahnya menyusut seperti baterai. */
+  const persenSisa = Math.round(c.sisa / c.kuota * 100);
 
   return `
   <div class="screen">
@@ -1498,14 +1520,18 @@ function layarCuti() {
       <div class="saldo-baris" style="margin-top:12px">
         <div>
           <span class="saldo-angka">${c.sisa}</span>
-          <span class="saldo-satuan"> / ${c.kuota} hari</span>
+          <span class="saldo-satuan"> hari tersisa</span>
         </div>
         <div style="text-align:right">
           <div class="eyebrow">Terpakai</div>
-          <div class="saldo-terpakai">${c.terpakai}</div>
+          <div class="saldo-terpakai">${c.terpakai} / ${c.kuota}</div>
         </div>
       </div>
-      <div class="bar"><i style="width:${Math.min(100, persen)}%"></i></div>
+      <div class="bar"><i style="width:${Math.min(100, Math.max(0, persenSisa))}%"></i></div>
+      <div class="ket-kuota">
+        Kuota ini hanya berlaku untuk <strong>Cuti Tahunan</strong>.
+        Izin dan Sakit tidak dibatasi jumlah harinya.
+      </div>
 
       <button class="btn-gold" style="margin-top:26px" data-aksi="cutiForm">
         ${icon('plus', 19, 'currentColor', 2.6)} Ajukan izin atau cuti
@@ -2165,9 +2191,17 @@ function pasangFormHandler() {
       if (!alasan.trim()) { toast('Alasan pengajuan wajib diisi.', 'err'); return; }
 
       const hari = hariKerja(mulai, selesai) || 1;
-      if (jenis === 'Cuti Tahunan' && hari > hitungSisaCuti().sisa) {
-        toast('Durasi melebihi sisa cuti tahunan Anda.', 'err');
-        return;
+      // Hanya Cuti Tahunan yang dibatasi. Izin dan Sakit lewat tanpa
+      // pemeriksaan kuota — orang tidak bisa menjadwalkan kapan dia
+      // sakit, dan kendalinya ada pada persetujuan atasan.
+      if (jenis === 'Cuti Tahunan') {
+        const c = hitungSisaCuti();
+        if (hari > c.sisa) {
+          toast(c.sisa === 0
+            ? 'Cuti tahunan Anda sudah habis tahun ini. Ajukan sebagai Izin bila perlu.'
+            : `Cuti tahunan Anda tersisa ${c.sisa} hari, pengajuan ini ${hari} hari.`, 'err');
+          return;
+        }
       }
 
       if (AKUN.masuk_()) {
