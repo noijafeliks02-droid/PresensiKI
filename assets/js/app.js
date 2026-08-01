@@ -182,7 +182,43 @@ function mulaiGPS() {
  * besar radius. Pegawai cukup tahu bahwa presensi harus dilakukan di
  * kantor. Angka lengkapnya tetap dicatat untuk audit admin.
  */
+/**
+ * Apakah sekarang masih dalam jam presensi?
+ *
+ * Ini pemeriksaan KENYAMANAN, bukan pengamanan: jam yang dipakai di
+ * sini jam perangkat, dan perangkatnya dipegang orang yang diawasi.
+ * Yang menentukan adalah pemicu di server, yang memakai jam server.
+ * Gunanya di sini supaya pegawai tidak menempuh seluruh verifikasi
+ * wajah dulu baru ditolak di ujung.
+ *
+ * Berlaku untuk presensi MASUK saja. Orang yang lembur sampai lewat
+ * tengah malam tetap harus bisa mencatat kepulangannya — menolaknya
+ * membuat catatan hari itu menggantung tanpa jam pulang.
+ */
+function dalamJamPresensi() {
+  const jam = new Intl.DateTimeFormat('en-GB', {
+    timeZone: PRESENSI.ZONA, hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(new Date());
+
+  const awal = SHIFT.palingAwal || '05:00';
+  const akhir = SHIFT.palingAkhir || '20:00';
+  return { ok: jam >= awal && jam <= akhir, jam, awal, akhir };
+}
+
 function bolehAbsen() {
+  // Batas jam berlaku lebih dulu daripada mode demo. Mode demo dibuat
+  // untuk melewati pengecekan LOKASI saat peragaan di luar kantor —
+  // bukan untuk membuka presensi tengah malam.
+  if (S.mode !== 'keluar') {
+    const j = dalamJamPresensi();
+    if (!j.ok) {
+      return {
+        ok: false,
+        alasan: `Presensi masuk hanya dapat dilakukan antara ${jamTampil(j.awal)} dan ${jamTampil(j.akhir)}. Sekarang pukul ${jamTampil(j.jam)}.`,
+      };
+    }
+  }
+
   if (DB.simpanan.modeDemo) return { ok: true };
   if (S.gps.status !== 'ok') return { ok: false, alasan: S.gps.pesan || 'Menunggu sinyal GPS…' };
   if (S.gps.akurasi > AKURASI_MAKS) {

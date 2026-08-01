@@ -62,6 +62,12 @@ const PRESENSI = {
     SHIFT.masuk = (data.jam_masuk || '07:30').slice(0, 5);
     SHIFT.batasTerlambat = (data.batas_terlambat || '08:00').slice(0, 5);
     SHIFT.pulang = (data.jam_pulang || '16:00').slice(0, 5);
+
+    // Batas jam presensi. Kolomnya baru ada setelah 06-jam-kerja.sql
+    // dijalankan; sebelum itu dipakai nilai bawaan yang sama dengan
+    // bawaan di server, supaya aplikasi dan server tidak berselisih.
+    SHIFT.palingAwal = (data.jam_paling_awal || '05:00').slice(0, 5);
+    SHIFT.palingAkhir = (data.jam_paling_akhir || '20:00').slice(0, 5);
     this.akurasiMaks = data.akurasi_maks || AKURASI_MAKS;
     return true;
   },

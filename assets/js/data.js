@@ -36,6 +36,14 @@ const SHIFT = {
   masuk: '07:30',
   batasTerlambat: '08:00',   // lewat jam ini dihitung terlambat
   pulang: '16:00',
+
+  /* Batas jam presensi MASUK. Di luar rentang ini presensi ditolak —
+     bukan sekadar diberi status berbeda. Nilainya ditimpa oleh
+     pengaturan dari server begitu pegawai masuk; angka di sini hanya
+     cadangan, dan sengaja sama dengan bawaan di server supaya keduanya
+     tidak pernah berselisih. */
+  palingAwal: '05:00',
+  palingAkhir: '20:00',
 };
 
 /** Akurasi GPS terburuk yang masih diterima (meter). */
