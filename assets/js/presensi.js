@@ -68,6 +68,12 @@ const PRESENSI = {
     // bawaan di server, supaya aplikasi dan server tidak berselisih.
     SHIFT.palingAwal = (data.jam_paling_awal || '05:00').slice(0, 5);
     SHIFT.palingAkhir = (data.jam_paling_akhir || '20:00').slice(0, 5);
+
+    // Kolom baru dari 08-hari-kerja.sql. Sebelum berkas itu dijalankan
+    // nilainya undefined; dianggap TERKUNCI, sama dengan bawaan server —
+    // supaya aplikasi tidak pernah lebih longgar daripada yang menolak.
+    this.adaKolomLibur = Object.prototype.hasOwnProperty.call(data, 'libur_akhir_pekan');
+    SHIFT.liburAkhirPekan = data.libur_akhir_pekan !== false;
     this.akurasiMaks = data.akurasi_maks || AKURASI_MAKS;
     return true;
   },

@@ -1447,6 +1447,25 @@ function viewLokasi() {
             ${jamTampil(SHIFT.masuk)} – ${jamTampil(SHIFT.pulang)}
           </span>
         </div>
+
+        ${PRESENSI.adaKolomLibur ? `
+        <label class="baris-radius" style="border-top:none;margin-top:0;cursor:pointer;align-items:flex-start;gap:12px">
+          <input type="checkbox" name="liburAkhirPekan" style="margin-top:4px;flex:none"
+                 ${SHIFT.liburAkhirPekan ? 'checked' : ''}>
+          <span style="font-size:13px;line-height:1.6;color:var(--text-2);font-weight:600">
+            <strong style="color:var(--ink)">Kunci Sabtu &amp; Minggu</strong><br>
+            Presensi masuk ditolak pada kedua hari itu. Lepas centangnya bila kantor
+            mengadakan piket atau lembur akhir pekan.<br>
+            Presensi pulang baru dibuka pukul <strong>${jamTampil(SHIFT.pulang)}</strong>,
+            mengikuti jam kerja di atas.
+          </span>
+        </label>` : `
+        <div class="baris-radius" style="border-top:none;margin-top:0">
+          <span style="font-size:12.5px;line-height:1.6;color:var(--danger);font-weight:700">
+            Pengaturan hari libur belum tersedia — jalankan
+            <strong>08-hari-kerja.sql</strong> di Supabase lebih dulu.
+          </span>
+        </div>`}
         <div style="display:flex;gap:10px;margin-top:22px">
           <button type="submit" class="btn btn-emas">${icon('check', 16, 'currentColor', 2.4)} Simpan Perubahan</button>
           <button type="button" class="btn" data-aksi="kantorDefault">Kembalikan ke bawaan</button>
@@ -2602,6 +2621,7 @@ function pasangFormKantor() {
       nama: f.nama.value.trim(),
       alamat: f.alamat.value.trim(),
       lat, lng, radius,
+      liburAkhirPekan: f.liburAkhirPekan ? f.liburAkhirPekan.checked : SHIFT.liburAkhirPekan,
     };
 
     if (adminSah()) {

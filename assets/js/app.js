@@ -202,26 +202,71 @@ function mulaiGPS() {
  * tengah malam tetap harus bisa mencatat kepulangannya — menolaknya
  * membuat catatan hari itu menggantung tanpa jam pulang.
  */
-function dalamJamPresensi() {
-  const jam = new Intl.DateTimeFormat('en-GB', {
+function jamWitKini() {
+  return new Intl.DateTimeFormat('en-GB', {
     timeZone: PRESENSI.ZONA, hour: '2-digit', minute: '2-digit', hour12: false,
   }).format(new Date());
+}
 
+function dalamJamPresensi() {
+  const jam = jamWitKini();
   const awal = SHIFT.palingAwal || '05:00';
   const akhir = SHIFT.palingAkhir || '20:00';
   return { ok: jam >= awal && jam <= akhir, jam, awal, akhir };
 }
 
-function bolehAbsen() {
-  // Batas jam berlaku lebih dulu daripada mode demo. Mode demo dibuat
-  // untuk melewati pengecekan LOKASI saat peragaan di luar kantor —
-  // bukan untuk membuka presensi tengah malam.
-  if (S.mode !== 'keluar') {
+/**
+ * Hari libur kantor.
+ *
+ * Harinya dibaca dalam zona kantor, bukan zona perangkat — HP yang masih
+ * tersetel WIB berganti hari dua jam lebih lambat, dan Senin dini hari di
+ * Ambon masih terbaca Minggu di sana.
+ */
+function hariLibur() {
+  if (!SHIFT.liburAkhirPekan) return { libur: false, nama: '' };
+  const hari = new Intl.DateTimeFormat('en-US', {
+    timeZone: PRESENSI.ZONA, weekday: 'long',
+  }).format(new Date());
+  if (hari === 'Saturday') return { libur: true, nama: 'Sabtu' };
+  if (hari === 'Sunday') return { libur: true, nama: 'Minggu' };
+  return { libur: false, nama: '' };
+}
+
+/** Presensi pulang baru dibuka pada jam pulang kantor. */
+function bolehPulangSekarang() {
+  const jam = jamWitKini();
+  const batas = SHIFT.pulang || '16:00';
+  return { ok: jam >= batas, jam, batas };
+}
+
+function bolehAbsen(mode = S.mode) {
+  const pulang = mode === 'keluar';
+
+  // Batas hari dan jam berlaku lebih dulu daripada mode demo. Mode demo
+  // dibuat untuk melewati pengecekan LOKASI saat peragaan di luar kantor
+  // — bukan untuk membuka presensi tengah malam atau hari Minggu.
+  if (!pulang) {
+    // Hari libur mengunci presensi MASUK saja. Presensi pulang sengaja
+    // dibiarkan: sekali masuk tercatat, kepulangannya harus bisa dicatat,
+    // kalau tidak catatannya menggantung tanpa jam pulang selamanya.
+    const h = hariLibur();
+    if (h.libur) {
+      return { ok: false, alasan: `Hari ${h.nama} adalah hari libur kantor. Presensi tidak dibuka.` };
+    }
+
     const j = dalamJamPresensi();
     if (!j.ok) {
       return {
         ok: false,
         alasan: `Presensi masuk hanya dapat dilakukan antara ${jamTampil(j.awal)} dan ${jamTampil(j.akhir)}. Sekarang pukul ${jamTampil(j.jam)}.`,
+      };
+    }
+  } else {
+    const j = bolehPulangSekarang();
+    if (!j.ok) {
+      return {
+        ok: false,
+        alasan: `Presensi pulang baru dapat dilakukan mulai pukul ${jamTampil(j.batas)}. Sekarang pukul ${jamTampil(j.jam)}.`,
       };
     }
   }
@@ -419,6 +464,10 @@ function layarHome() {
   const kini = new Date();
   const sisaCuti = hitungSisaCuti();
 
+  // Tombol Pulang dulu tidak pernah diperiksa sama sekali — ia selalu bisa
+  // ditekan, dan penolakannya baru muncul di ujung setelah verifikasi wajah.
+  const izinPulang = bolehAbsen('keluar');
+
   const blokAbsen = p
     ? `<div class="kotak-checkin">
          <span class="ikon">${icon('check', 20, 'var(--sageInk)', 3)}</span>
@@ -426,9 +475,11 @@ function layarHome() {
            <div class="judul">${p.jamKeluar ? 'Presensi hari ini selesai' : 'Sudah check-in'}</div>
            <div class="sub">Masuk pukul ${jamTampil(p.jamMasuk)}${p.jamKeluar ? ` · pulang ${jamTampil(p.jamKeluar)}` : ''}</div>
          </div>
-         ${p.jamKeluar ? '' : '<button class="btn-pil-bahaya" data-aksi="mulaiCheckout">Pulang</button>'}
+         ${p.jamKeluar ? '' : `<button class="btn-pil-bahaya" data-aksi="mulaiCheckout" ${izinPulang.ok ? '' : 'disabled'}>Pulang</button>`}
        </div>
-       ${p.jamKeluar ? '' : '<div class="ket-izin">Presensi pulang juga memerlukan verifikasi wajah.</div>'}`
+       ${p.jamKeluar ? '' : `<div class="ket-izin">${izinPulang.ok
+        ? 'Presensi pulang juga memerlukan verifikasi wajah.'
+        : esc(izinPulang.alasan)}</div>`}`
     : `<button class="btn-gold" style="margin-top:20px" data-aksi="mulaiCheckin" ${izin.ok ? '' : 'disabled'}>
          ${icon('check-clipboard', 20, 'currentColor', 2.6)} Check-in sekarang
        </button>
@@ -1918,7 +1969,10 @@ const AKSI = {
 
   /* Alur presensi: Beranda → Verifikasi lokasi → Selfie → Berhasil */
   mulaiCheckin: () => {
-    const izin = bolehAbsen();
+    // Mode disebut tegas, tidak diwarisi dari S.mode: di sini S.mode masih
+    // menyimpan mode alur SEBELUMNYA, sehingga aturan yang diperiksa bisa
+    // aturan tahap yang salah.
+    const izin = bolehAbsen('masuk');
     if (!izin.ok) { toast(izin.alasan, 'err'); return; }
     S.mode = 'masuk';
     pindah('peta');
@@ -1929,7 +1983,7 @@ const AKSI = {
   mulaiCheckout: () => {
     const p = DB.presensi;
     if (!p || p.jamKeluar) return;
-    const izin = bolehAbsen();
+    const izin = bolehAbsen('keluar');
     if (!izin.ok) { toast(izin.alasan, 'err'); return; }
     S.mode = 'keluar';
     pindah('peta');

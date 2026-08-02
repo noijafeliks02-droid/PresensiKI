@@ -648,13 +648,22 @@ const SRV = {
      Pengaturan kantor
      ============================================================ */
 
-  async simpanKantor({ nama, alamat, lat, lng, radius }) {
+  async simpanKantor({ nama, alamat, lat, lng, radius, liburAkhirPekan }) {
+    const isi = {
+      kantor_nama: nama, kantor_alamat: alamat,
+      kantor_lat: lat, kantor_lng: lng, radius,
+      diubah: new Date().toISOString(),
+    };
+    // Kolomnya baru ada setelah 08-hari-kerja.sql dijalankan. Sebelum itu
+    // mengirimnya membuat SELURUH penyimpanan gagal, termasuk titik kantor —
+    // jadi keberadaannya dipastikan dari baris yang benar-benar terbaca.
+    if (typeof liburAkhirPekan === 'boolean' && PRESENSI.adaKolomLibur) {
+      isi.libur_akhir_pekan = liburAkhirPekan;
+    }
+
     const hasil = await this.pastikanTertulis(
-      await SB.from('pengaturan').update({
-        kantor_nama: nama, kantor_alamat: alamat,
-        kantor_lat: lat, kantor_lng: lng, radius,
-        diubah: new Date().toISOString(),
-      }).eq('id', 1).select('kantor_lat, kantor_lng, radius'));
+      await SB.from('pengaturan').update(isi)
+        .eq('id', 1).select('kantor_lat, kantor_lng, radius'));
 
     if (!hasil.ok) return hasil;
 

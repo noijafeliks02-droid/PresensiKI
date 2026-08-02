@@ -44,6 +44,12 @@ const SHIFT = {
      tidak pernah berselisih. */
   palingAwal: '05:00',
   palingAkhir: '20:00',
+
+  /* Sabtu & Minggu terkunci: presensi MASUK ditolak. Presensi PULANG
+     tidak ikut dikunci — sekali masuk tercatat, kepulangannya harus
+     bisa dicatat, kalau tidak catatannya menggantung tanpa jam pulang.
+     Ditimpa pengaturan server (kolom `libur_akhir_pekan`). */
+  liburAkhirPekan: true,
 };
 
 /** Akurasi GPS terburuk yang masih diterima (meter). */
