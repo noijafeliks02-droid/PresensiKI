@@ -526,7 +526,24 @@ input[type="range"] { accent-color: var(--gold); width: 100%; }
   font-size: 13.5px; font-weight: 800; cursor: pointer;
 }
 .btn-hapus:hover { filter: brightness(1.08); }
+.btn-hapus:disabled { opacity: .6; cursor: default; filter: none; }
 .chip-baru { background: var(--goldTint); color: var(--goldInk); }
+
+/* Pilihan cara menghapus pegawai — dua kotak berdampingan supaya
+   "nonaktifkan" dan "hapus permanen" terbaca sebagai dua tindakan
+   berbeda, bukan satu tombol dengan peringatan kecil. */
+.pilih-hapus {
+  display: flex; gap: 12px; align-items: flex-start; cursor: pointer;
+  border: 1.5px solid var(--line); border-radius: var(--r-info);
+  padding: 14px 16px; margin-bottom: 12px;
+}
+.pilih-hapus:has(input:checked) { border-color: var(--gold); background: var(--goldTint); }
+.pilih-hapus input { margin-top: 3px; flex: none; }
+.pilih-hapus strong { font-size: 14px; color: var(--text-1); }
+.pilih-hapus .ket {
+  display: block; margin-top: 6px;
+  font-size: 13px; line-height: 1.65; color: var(--text-2); font-weight: 500;
+}
 
 /* ---------- Toast ---------- */
 .toast-admin {

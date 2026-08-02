@@ -938,38 +938,170 @@ function dialogPegawai(id) {
   });
 }
 
-function dialogHapusPegawai(id) {
-  const p = DB.pegawaiById(id);
+/**
+ * Hapus pegawai — dua tindakan yang sengaja dipisah.
+ *
+ * "Nonaktifkan" dan "hapus permanen" sering disamakan padahal akibatnya
+ * jauh berbeda, dan yang satu tidak bisa dibatalkan. Jadi keduanya
+ * ditawarkan berdampingan, lengkap dengan jumlah yang akan hilang, agar
+ * pilihannya diambil sadar — bukan ketahuan sesudahnya.
+ */
+async function dialogHapusPegawai(id) {
+  const p = DB.pegawaiById(id) || (DB.pegawaiServer || []).find(x => x.id === id);
   if (!p) return;
 
-  if (p.id === 1) {
-    toast('Pemilik akun aplikasi pegawai tidak dapat dihapus.', 'err');
+  if (!adminSah()) {
+    DB.hapusPegawai(id);
+    render();
+    toast(`${p.nama} dihapus dari data induk.`, 'err');
     return;
   }
 
   bukaModal(`
-    <div class="modal-head">
-      <div style="flex:1">
-        <div class="t">Hapus Pegawai</div>
-        <div class="s">Tindakan ini menghilangkan pegawai dari seluruh daftar</div>
+    <div class="modal-head"><div style="flex:1"><div class="t">Menghitung…</div></div></div>
+    <div class="modal-isi"><div class="kosong">Membaca riwayat ${esc(p.nama)} dari server.</div></div>`);
+
+  let n;
+  try {
+    n = await SRV.hitungDataPegawai(id);
+  } catch (e) {
+    tutupModal();
+    toast(pesanGalat(e), 'err');
+    return;
+  }
+
+  const diri = AKUN.profil && AKUN.profil.id === id;
+
+  bukaModal(`
+    <form id="formHapusPegawai">
+      <div class="modal-head">
+        <div style="flex:1">
+          <div class="t">Hapus Pegawai</div>
+          <div class="s">${esc(p.nama)} — NIK ${esc(samarkanNik(p.nik))}, ${esc(p.unit)}</div>
+        </div>
+        <button type="button" class="modal-tutup" data-aksi="tutupModal" aria-label="Tutup">
+          ${icon('close', 18, 'var(--text-2)', 2.4)}
+        </button>
       </div>
-      <button type="button" class="modal-tutup" data-aksi="tutupModal" aria-label="Tutup">
-        ${icon('close', 18, 'var(--text-2)', 2.4)}
-      </button>
-    </div>
-    <div class="modal-isi">
-      <div class="modal-bahaya">
-        <strong>${esc(p.nama)}</strong> (NIK ${esc(samarkanNik(p.nik))}, ${esc(p.unit)}) akan dihapus dari
-        data induk, rekap kehadiran, dan laporan.
-        Riwayat pengajuan izin/cuti yang pernah dibuat tetap tersimpan.
+      <div class="modal-isi">
+        ${diri ? `
+          <div class="modal-bahaya">
+            Ini akun Anda sendiri. Menghapusnya akan mengunci Anda di luar panel
+            seketika, dan tidak ada jalan masuk lain untuk memperbaikinya.
+          </div>` : `
+
+        <label class="pilih-hapus">
+          <input type="radio" name="cara" value="nonaktif" checked>
+          <span>
+            <strong>Nonaktifkan</strong>
+            <span class="chip chip-green" style="margin-left:8px">Dianjurkan</span>
+            <span class="ket">
+              Aksesnya ditutup dan namanya keluar dari daftar aktif, tetapi
+              ${fmtAngka(n.presensi)} catatan presensinya tetap tersimpan.
+              Ini yang benar untuk pegawai yang pindah atau berhenti — riwayat
+              presensi adalah dokumen kepegawaian.
+            </span>
+          </span>
+        </label>
+
+        <label class="pilih-hapus">
+          <input type="radio" name="cara" value="permanen">
+          <span>
+            <strong>Hapus permanen</strong>
+            <span class="ket">
+              Akunnya, <strong>${fmtAngka(n.presensi)} catatan presensi</strong>,
+              <strong>${fmtAngka(n.pengajuan)} pengajuan</strong>, dan
+              <strong>${fmtAngka(n.berkas)} berkas</strong> (foto absen serta
+              lampiran) ikut terhapus. Emailnya bebas dipakai mendaftar lagi.
+              Untuk salah daftar dan data uji coba, bukan untuk pegawai yang
+              sudah pernah bekerja.
+            </span>
+          </span>
+        </label>
+
+        <div id="rincianPermanen" hidden>
+          <label style="display:flex;gap:10px;align-items:flex-start;margin-top:6px;cursor:pointer">
+            <input type="checkbox" name="simpan" style="margin-top:3px" ${n.terdaftar ? '' : 'disabled'}>
+            <span style="font-size:13.5px;line-height:1.6;color:var(--text-2)">
+              Biarkan tetap di <strong>Pendaftaran</strong> supaya bisa daftar ulang
+              dengan email yang sama, tanpa Anda mengetik ulang NIK, nama, jabatan,
+              dan unitnya.
+              ${n.terdaftar ? '' : '<br><em>Tidak tersedia — barisnya sudah tidak ada di daftar pendaftaran.</em>'}
+            </span>
+          </label>
+
+          <div class="form-row" style="margin-top:18px">
+            <label for="ketikHapusPeg">Ketik <strong>HAPUS</strong> untuk melanjutkan</label>
+            <input id="ketikHapusPeg" name="ketik" type="text" autocomplete="off"
+                   placeholder="HAPUS" style="text-transform:uppercase">
+            <div class="form-bantu">Tidak ada cara mengembalikannya.</div>
+          </div>
+        </div>`}
+
+        <div id="errHapusPegawai"></div>
       </div>
-    </div>
-    <div class="modal-kaki">
-      <button type="button" class="btn" data-aksi="tutupModal">Batal</button>
-      <button type="button" class="btn-hapus" data-aksi="konfirmasiHapus" data-id="${p.id}">
-        ${icon('hapus', 16, 'currentColor')} Ya, hapus
-      </button>
-    </div>`);
+      <div class="modal-kaki">
+        <button type="button" class="btn" data-aksi="tutupModal">Batal</button>
+        ${diri ? '' : `
+          <button type="submit" class="btn-hapus" id="tombolHapusPeg">
+            ${icon('hapus', 16, 'currentColor', 2.4)} Nonaktifkan
+          </button>`}
+      </div>
+    </form>`);
+
+  if (diri) return;
+
+  const form = document.getElementById('formHapusPegawai');
+  const rincian = document.getElementById('rincianPermanen');
+  const tombol = document.getElementById('tombolHapusPeg');
+
+  form.addEventListener('change', () => {
+    const permanen = form.cara.value === 'permanen';
+    rincian.hidden = !permanen;
+    tombol.innerHTML = `${icon('hapus', 16, 'currentColor', 2.4)} ${permanen ? 'Hapus permanen' : 'Nonaktifkan'}`;
+  });
+
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const err = document.getElementById('errHapusPegawai');
+    const permanen = form.cara.value === 'permanen';
+
+    if (permanen && form.ketik.value.trim().toUpperCase() !== 'HAPUS') {
+      err.innerHTML = '<div class="modal-bahaya" style="margin-top:14px">Ketik HAPUS persis untuk melanjutkan.</div>';
+      return;
+    }
+
+    tombol.disabled = true;
+    tombol.textContent = 'Memproses…';
+
+    const r = permanen
+      ? await SRV.hapusPegawaiTotal(id, form.simpan.checked)
+      : await SRV.nonaktifkanPegawai(id);
+
+    if (!r.ok) {
+      tombol.disabled = false;
+      tombol.innerHTML = `${icon('hapus', 16, 'currentColor', 2.4)} ${permanen ? 'Hapus permanen' : 'Nonaktifkan'}`;
+      err.innerHTML = `<div class="modal-bahaya" style="margin-top:14px">${esc(r.pesan)}</div>`;
+      return;
+    }
+
+    tutupModal();
+    render();
+
+    if (!permanen) {
+      toast(`${p.nama} dinonaktifkan. Riwayat presensinya tetap tersimpan.`, 'err');
+      return;
+    }
+
+    const lanjut = r.pendaftaran === 'disimpan'
+      ? 'Bisa langsung daftar ulang dengan email yang sama.'
+      : 'Email dan NIK-nya bebas dipakai mendaftar lagi.';
+    toast(
+      `${p.nama} dihapus permanen — ${fmtAngka(r.presensi)} presensi, ` +
+      `${fmtAngka(r.pengajuan)} pengajuan, ${fmtAngka(r.berkas)} berkas. ${lanjut}` +
+      (r.berkasGagal ? ` ${fmtAngka(r.berkasGagal)} berkas gagal dibuang.` : ''),
+      'err');
+  });
 }
 
 /** Daftar unit kerja: lihat jumlah pegawai, tambah, ganti nama, dan hapus. */
@@ -1730,12 +1862,12 @@ function viewTerdaftar() {
                   ? '<span class="chip chip-green">Sudah punya akun</span>'
                   : '<span class="chip chip-grey">Belum mendaftar</span>'}</td>
                 <td class="aksi-sel">
-                  ${x.sudah_daftar ? '' : `
-                    <button class="btn-ikon bahaya" data-aksi="hapusTerdaftar"
-                            data-id="${esc(x.id)}" data-nama="${esc(x.nama)}"
-                            title="Batalkan pendaftaran">
-                      ${icon('hapus', 16, 'currentColor', 2.4)}
-                    </button>`}
+                  <button class="btn-ikon bahaya" data-aksi="hapusTerdaftar"
+                          data-id="${esc(x.id)}" data-nama="${esc(x.nama)}"
+                          data-email="${esc(x.email)}" data-sudah="${x.sudah_daftar ? '1' : ''}"
+                          title="${x.sudah_daftar ? 'Hapus pegawai ini' : 'Batalkan pendaftaran'}">
+                    ${icon('hapus', 16, 'currentColor', 2.4)}
+                  </button>
                 </td>
               </tr>`).join('')}
           </tbody>
@@ -2175,10 +2307,22 @@ const AKSI = {
 
   hapusTerdaftar: async (el) => {
     const nama = el.dataset.nama || 'pegawai ini';
+
+    // Orang yang sudah punya akun tidak cukup dibuang dari daftar ini:
+    // akun dan riwayatnya akan tertinggal, dan saat ia mencoba masuk
+    // aplikasi menjawab "akun belum aktif" — seolah masih ada. Jadi
+    // tombolnya dialihkan ke dialog hapus pegawai yang sebenarnya.
+    if (el.dataset.sudah) {
+      const p = (DB.pegawaiServer || []).find(
+        x => (x.email || '').toLowerCase() === (el.dataset.email || '').toLowerCase());
+      if (p) { dialogHapusPegawai(p.id); return; }
+      // Akunnya sudah tidak ada — barisnya tinggal sisa. Aman dibuang.
+    }
+
     if (!confirm(`Batalkan pendaftaran ${nama}?\n\nOrangnya tidak akan bisa membuat akun sampai didaftarkan lagi.`)) return;
     const r = await SRV.hapusTerdaftar(el.dataset.id);
     render();
-    toast(r.ok ? `Pendaftaran ${nama} dibatalkan.` : r.pesan, r.ok ? 'err' : 'err');
+    toast(r.ok ? `Pendaftaran ${nama} dibatalkan.` : r.pesan, 'err');
   },
 
   // Id pegawai kini uuid dari server, bukan nomor urut. Membungkusnya
@@ -2189,26 +2333,6 @@ const AKSI = {
   editUnit: (el) => dialogEditUnit(el.dataset.asal),
   hapusUnit: (el) => dialogHapusUnit(el.dataset.asal),
   tutupModal: () => tutupModal(),
-  konfirmasiHapus: async (el) => {
-    const id = el.dataset.id;
-    const p = DB.pegawaiById(id);
-
-    if (adminSah()) {
-      // Dinonaktifkan, bukan dihapus: riwayat presensinya dokumen
-      // kepegawaian dan ikut lenyap kalau barisnya dibuang.
-      const r = await SRV.nonaktifkanPegawai(id);
-      if (!r.ok) { toast(r.pesan, 'err'); return; }
-      tutupModal();
-      render();
-      toast(`${p ? p.nama : 'Pegawai'} dinonaktifkan. Riwayat presensinya tetap tersimpan.`, 'err');
-      return;
-    }
-
-    DB.hapusPegawai(id);
-    tutupModal();
-    render();
-    toast(`${p ? p.nama : 'Pegawai'} dihapus dari data induk.`, 'err');
-  },
 
   keTerdaftar: () => pindahView('terdaftar'),
 

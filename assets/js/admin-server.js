@@ -87,6 +87,80 @@ const SRV = {
     return { ok: true };
   },
 
+  /**
+   * Berapa banyak yang akan ikut hilang kalau pegawai ini dihapus.
+   *
+   * Dibaca dari server, bukan dari data yang kebetulan sedang termuat di
+   * panel: DB.kehadiranHariIni hanya memuat hari ini, sedangkan yang
+   * dihapus seluruh riwayatnya.
+   */
+  async hitungDataPegawai(id) {
+    const { data, error } = await SB.rpc('hitung_data_pegawai', { p_id: id });
+    if (error) throw error;
+    const berkas = await this.berkasPegawai(id);
+    return { ...data, berkas: berkas.length, jalurBerkas: berkas };
+  },
+
+  /**
+   * Semua berkas milik satu pegawai di Storage.
+   *
+   * Foto absen dan lampiran surat dokter sama-sama disimpan di dalam
+   * folder bernama id pegawainya, jadi satu daftar folder sudah mencakup
+   * keduanya — dan tidak menyentuh milik orang lain.
+   */
+  async berkasPegawai(id) {
+    const { data, error } = await SB.storage
+      .from(PRESENSI.BUCKET)
+      .list(id, { limit: 1000 });
+    if (error || !data) return [];
+    return data.filter(f => f.name && f.id).map(f => `${id}/${f.name}`);
+  },
+
+  /**
+   * Hapus pegawai sampai bersih: akun, riwayat, dan berkasnya.
+   *
+   * Berbeda dari nonaktifkanPegawai(), yang ini tidak menyisakan apa pun.
+   * Dipakai untuk salah daftar dan data uji coba — bukan untuk pegawai
+   * yang benar-benar pernah bekerja, karena riwayat presensinya dokumen
+   * kepegawaian.
+   *
+   * Berkasnya dibuang lebih dulu selagi barisnya masih ada. Kalau
+   * urutannya dibalik, jalur fotonya sudah ikut terhapus bersama barisnya
+   * dan berkasnya tertinggal selamanya tanpa ada yang tahu namanya.
+   *
+   * Gagalnya penghapusan berkas TIDAK membatalkan penghapusan akun:
+   * gambar yatim bisa dibereskan belakangan, akun yang tertinggal tidak.
+   */
+  async hapusPegawaiTotal(id, simpanPendaftaran = false) {
+    let berkasGagal = 0;
+    const jalur = await this.berkasPegawai(id);
+
+    if (jalur.length) {
+      const { error } = await SB.storage.from(PRESENSI.BUCKET).remove(jalur);
+      if (error) berkasGagal = jalur.length;
+    }
+
+    const { data, error } = await SB.rpc('hapus_pegawai', {
+      p_id: id,
+      p_simpan_pendaftaran: simpanPendaftaran,
+    });
+    if (error) return { ok: false, pesan: pesanGalat(error) };
+
+    await this.muatPegawai();
+    await this.muatKehadiran();
+    await this.muatTerdaftar();
+    await this.muatPengajuan();
+    await this.muatTanggalBukti();
+    await this.muatTren();
+
+    return {
+      ok: true,
+      ...data,
+      berkas: jalur.length - berkasGagal,
+      berkasGagal,
+    };
+  },
+
   /* ============================================================
      Kehadiran hari ini
      ------------------------------------------------------------

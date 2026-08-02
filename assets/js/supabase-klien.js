@@ -69,6 +69,12 @@ const GALAT = [
   [/sudah tercatat dan tidak dapat diubah/i,
     'Presensi hari ini sudah terkunci dan tidak dapat diubah.'],
 
+  // Fungsi server belum terpasang. Terjadi kalau berkas SQL terbaru
+  // belum dijalankan di Supabase — sebutkan berkasnya, jangan biarkan
+  // pesannya berbunyi seperti kerusakan.
+  [/could not find the function|function .* does not exist|PGRST202/i,
+    'Fungsi ini belum terpasang di server. Jalankan berkas SQL terbaru di Supabase → SQL Editor.'],
+
   [/failed to fetch|network|networkerror/i,
     'Tidak dapat menghubungi server. Periksa sambungan internet Anda.'],
   [/jwt expired|invalid jwt|session.*expired/i,
