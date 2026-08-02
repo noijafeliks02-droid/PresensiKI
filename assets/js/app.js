@@ -221,14 +221,41 @@ function bolehAbsen() {
 
   if (DB.simpanan.modeDemo) return { ok: true };
   if (S.gps.status !== 'ok') return { ok: false, alasan: S.gps.pesan || 'Menunggu sinyal GPS…' };
-  if (S.gps.akurasi > AKURASI_MAKS) {
-    return { ok: false, alasan: 'Sinyal GPS belum akurat. Tunggu sebentar atau pindah ke tempat yang lebih terbuka.' };
+  if (S.gps.akurasi > batasAkurasi()) {
+    return {
+      ok: false,
+      alasan: `Ketelitian sinyal ±${Math.round(S.gps.akurasi)} m, batasnya ${batasAkurasi()} m. Coba di dekat jendela atau di luar ruangan.`,
+    };
   }
   if (!S.gps.dalam) return { ok: false, alasan: 'Anda belum berada di lokasi kantor.' };
   return { ok: true };
 }
 
 /** Ringkasan status lokasi, tanpa angka jarak maupun radius. */
+/**
+ * Batas akurasi GPS terburuk yang masih diterima.
+ *
+ * Diambil dari pengaturan server bila sudah termuat. Sebelumnya selalu
+ * memakai konstanta 100 m di data.js — kolom `akurasi_maks` di tabel
+ * pengaturan ada sejak awal tetapi tidak pernah dipakai, jadi menyetelnya
+ * dari panel admin tidak berpengaruh apa pun.
+ */
+function batasAkurasi() {
+  return (typeof PRESENSI !== 'undefined' && PRESENSI.akurasiMaks) || AKURASI_MAKS;
+}
+
+/**
+ * Keterangan lokasi di beranda.
+ *
+ * HARUS sepakat dengan bolehAbsen(). Sebelumnya hanya melihat
+ * S.gps.dalam dan mengabaikan akurasi, sehingga beranda menulis "Anda
+ * berada di kantor — presensi dapat dilakukan" sementara tombolnya mati
+ * karena sinyal belum akurat. Pegawai membaca dua pernyataan yang saling
+ * bertentangan dan tidak punya cara tahu mana yang benar.
+ *
+ * Kalau akurasinya buruk, aplikasi memang TIDAK TAHU apakah orangnya di
+ * kantor. Mengaku tidak tahu lebih jujur daripada menebak.
+ */
 function statusLokasi() {
   if (DB.simpanan.modeDemo) {
     return { kelas: '', judul: 'Mode demo aktif', sub: 'Pengecekan lokasi dilewati' };
@@ -238,6 +265,13 @@ function statusLokasi() {
   }
   if (S.gps.status === 'gagal') {
     return { kelas: 'luar', judul: 'GPS tidak aktif', sub: S.gps.pesan };
+  }
+  if (S.gps.akurasi > batasAkurasi()) {
+    return {
+      kelas: 'netral',
+      judul: 'Lokasi belum pasti',
+      sub: `Ketelitian sinyal ±${Math.round(S.gps.akurasi)} m, terlalu kasar untuk memastikan posisi. Coba di dekat jendela atau di luar ruangan.`,
+    };
   }
   return S.gps.dalam
     ? { kelas: '', judul: 'Anda berada di kantor', sub: 'Presensi dapat dilakukan' }

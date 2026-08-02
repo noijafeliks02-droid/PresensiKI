@@ -119,13 +119,21 @@ const SRV = {
           jarakKeluar: null, dalamRadiusKeluar: null,
         };
       }
-      const dalam = r.jarak_masuk == null || r.jarak_masuk <= k.radius;
+      /* Tiga keadaan, bukan dua. Jarak kosong berarti presensi dibuat
+         tanpa lokasi — mode demo, atau izin GPS ditolak. Itu BUKAN
+         "berada di dalam radius"; itu tidak diketahui.
+
+         Sebelumnya jarak kosong diperlakukan sebagai di dalam radius,
+         sehingga absen tanpa koordinat sama sekali tampil bertanda
+         hijau "Dalam". Ketiadaan bukti ditampilkan sebagai bukti. */
+      const dalam = r.jarak_masuk == null ? null : r.jarak_masuk <= k.radius;
       return {
         ...p,
         status: r.status,
         jamMasuk: PRESENSI.jamWit(r.jam_masuk) || '—',
         jamKeluar: PRESENSI.jamWit(r.jam_keluar) || '—',
-        lokasi: dalam ? 'Area kantor' : 'Di luar area kantor',
+        lokasi: dalam === null ? 'Tanpa lokasi'
+          : (dalam ? 'Area kantor' : 'Di luar area kantor'),
         dalamRadius: dalam,
         lat: r.lat_masuk, lng: r.lng_masuk,
         akurasi: r.akurasi_masuk, jarak: r.jarak_masuk,
@@ -431,12 +439,15 @@ const SRV = {
      Pengaturan kantor
      ============================================================ */
 
-  async simpanKantor({ nama, alamat, lat, lng, radius }) {
-    const { error } = await SB.from('pengaturan').update({
+  async simpanKantor({ nama, alamat, lat, lng, radius, akurasiMaks }) {
+    const isi = {
       kantor_nama: nama, kantor_alamat: alamat,
       kantor_lat: lat, kantor_lng: lng, radius,
       diubah: new Date().toISOString(),
-    }).eq('id', 1);
+    };
+    if (Number.isFinite(akurasiMaks)) isi.akurasi_maks = akurasiMaks;
+
+    const { error } = await SB.from('pengaturan').update(isi).eq('id', 1);
     if (error) return { ok: false, pesan: pesanGalat(error) };
     await PRESENSI.muatPengaturan();
     return { ok: true, pesan: 'Titik kantor tersimpan. Seluruh perangkat ikut memakainya.' };

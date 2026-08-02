@@ -424,9 +424,7 @@ function viewKehadiran() {
               <td>${esc(p.unit)}</td>
               <td class="tegas">${jamTampil(p.jamMasuk)}</td>
               <td>${esc(p.lokasi)}</td>
-              <td>${p.jamMasuk === '—' ? '—' : (p.dalamRadius
-      ? '<span class="chip chip-green">Dalam</span>'
-      : '<span class="chip chip-red">Luar</span>')}</td>
+              <td>${p.jamMasuk === '—' ? '—' : chipRadius(p.dalamRadius)}</td>
               <td>${chip(p.status)}</td>
             </tr>`).join('')
       : '<tr><td colspan="7"><div class="kosong-panel">Tidak ada pegawai yang cocok dengan filter</div></td></tr>'}
@@ -1309,6 +1307,24 @@ function viewLokasi() {
                  aria-label="Radius geofencing dalam meter">
         </div>
 
+        <div class="baris-radius">
+          <div style="flex:none">
+            <label for="inpAkurasi" style="display:block;font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--mut)">
+              Ketelitian GPS minimum
+            </label>
+            <div class="nilai" id="bacaAkurasi" style="margin-top:8px">${PRESENSI.akurasiMaks || AKURASI_MAKS} m</div>
+          </div>
+          <input id="inpAkurasi" name="akurasi" type="range" min="20" max="500" step="10"
+                 value="${Math.min(500, Math.max(20, PRESENSI.akurasiMaks || AKURASI_MAKS))}" style="flex:1"
+                 aria-label="Ketelitian GPS minimum dalam meter">
+        </div>
+        <div style="font-size:12.5px;line-height:1.6;color:var(--mut);margin:-6px 0 4px">
+          Presensi ditolak bila sinyal lebih kasar dari angka ini — tanpa itu,
+          posisi yang meleset ratusan meter bisa terbaca seolah di dalam kantor.
+          HP dengan GPS biasanya mencapai 5–30 m. Laptop memakai jaringan WiFi
+          dan sering hanya 500 m ke atas, jadi longgarkan bila memang diuji dari laptop.
+        </div>
+
         <div class="baris-radius" style="border-top:none;margin-top:0">
           <span style="font-size:13.5px;font-weight:600;color:var(--mut)">Jam kerja</span>
           <span style="font-size:15px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums">
@@ -1932,6 +1948,24 @@ function renderGerbang() {
    Render utama
    ============================================================ */
 
+/**
+ * Penanda posisi terhadap radius kantor — tiga keadaan, bukan dua.
+ *
+ * `null` berarti presensi dibuat tanpa koordinat sama sekali. Itu bukan
+ * "di dalam" dan bukan "di luar"; itu tidak diketahui, dan admin perlu
+ * melihatnya sebagai hal tersendiri. Menampilkannya hijau menyatakan
+ * sesuatu yang tidak pernah diukur; menampilkannya merah menuduh tanpa
+ * dasar.
+ */
+function chipRadius(dalam) {
+  if (dalam === null || dalam === undefined) {
+    return '<span class="chip chip-grey">Tanpa lokasi</span>';
+  }
+  return dalam
+    ? '<span class="chip chip-green">Dalam</span>'
+    : '<span class="chip chip-red">Luar</span>';
+}
+
 /** Apakah pemilik sesi berhak membuka panel ini? */
 function adminSah() {
   return AKUN.masuk_() && AKUN.profil.peran === 'admin';
@@ -2318,11 +2352,20 @@ function pasangFormKantor() {
     if (b) b.textContent = `${r} m`;
   };
   f.radius.addEventListener('input', tulisRadius);
+
+  if (f.akurasi) {
+    f.akurasi.addEventListener('input', () => {
+      const a = document.getElementById('bacaAkurasi');
+      if (a) a.textContent = `${parseInt(f.akurasi.value, 10)} m`;
+    });
+  }
+
   f.addEventListener('submit', async e => {
     e.preventDefault();
     const lat = parseFloat(f.lat.value);
     const lng = parseFloat(f.lng.value);
     const radius = parseInt(f.radius.value, 10);
+    const akurasiMaks = f.akurasi ? parseInt(f.akurasi.value, 10) : null;
 
     if (!f.nama.value.trim()) { toast('Nama lokasi wajib diisi.', 'err'); return; }
     if (!Number.isFinite(lat) || lat < -90 || lat > 90) { toast('Latitude harus antara -90 dan 90.', 'err'); return; }
@@ -2338,7 +2381,7 @@ function pasangFormKantor() {
     if (adminSah()) {
       // Disimpan di server, jadi seluruh perangkat langsung ikut. Tautan
       // pengaturan antar perangkat yang dulu dipakai tidak diperlukan lagi.
-      const r = await SRV.simpanKantor(kantor);
+      const r = await SRV.simpanKantor({ ...kantor, akurasiMaks });
       if (!r.ok) { toast(r.pesan, 'err'); return; }
     } else {
       DB.simpanan.kantor = kantor;
