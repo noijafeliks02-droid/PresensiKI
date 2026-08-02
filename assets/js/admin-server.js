@@ -22,6 +22,53 @@ const SRV = {
   pengajuan: [],
 
   /* ============================================================
+     Memastikan penulisan benar-benar terjadi
+     ------------------------------------------------------------
+     PostgREST menjawab `204 No Content` tanpa badan dan tanpa galat
+     untuk TIGA keadaan yang sangat berbeda:
+
+       1. perubahannya tersimpan,
+       2. kebijakan RLS menolaknya diam-diam (sesi berakhir, bukan admin,
+          akun dinonaktifkan),
+       3. barisnya sudah tidak ada.
+
+     Ketiganya sampai ke aplikasi dalam bentuk yang sama persis, sehingga
+     panel bisa mengabarkan "tersimpan" untuk perubahan yang tidak pernah
+     terjadi — lalu memuat ulang nilai lama dari server, dan pengguna
+     melihat isiannya seperti "kembali sendiri".
+
+     Karena itu setiap penulisan sekarang meminta barisnya dikembalikan
+     dengan `.select()`, dan hasilnya diperiksa di sini.
+     ============================================================ */
+
+  async pastikanTertulis({ data, error }, terjemah) {
+    if (error) return { ok: false, pesan: (terjemah || pesanGalat)(error) };
+    const jumlah = Array.isArray(data) ? data.length : (data ? 1 : 0);
+    if (jumlah > 0) return { ok: true };
+    return { ok: false, pesan: await this.sebabGagalTulis() };
+  },
+
+  /** Cari sebab sebenarnya, supaya pesannya menyebut tindakan yang harus diambil. */
+  async sebabGagalTulis() {
+    const { data: s } = await SB.auth.getSession();
+    if (!s || !s.session) {
+      return 'Sesi Anda sudah berakhir, jadi perubahannya tidak tersimpan. Masuk kembali, lalu ulangi.';
+    }
+
+    const { data: p } = await SB
+      .from('pegawai')
+      .select('peran, aktif')
+      .eq('id', s.session.user.id)
+      .maybeSingle();
+
+    if (!p)             return 'Data akun Anda tidak terbaca server. Masuk kembali, lalu ulangi.';
+    if (!p.aktif)       return 'Akun Anda sudah dinonaktifkan, jadi perubahannya tidak tersimpan.';
+    if (p.peran !== 'admin') return 'Akun Anda bukan admin, jadi perubahannya tidak tersimpan.';
+
+    return 'Server tidak menyimpan perubahan ini dan tidak menyebutkan alasannya. Coba sekali lagi; bila tetap begini, sampaikan pesan ini apa adanya.';
+  },
+
+  /* ============================================================
      Roster pegawai
      ============================================================ */
 
@@ -59,14 +106,16 @@ const SRV = {
    */
   async simpanPegawai(id, { nama, nik, jabatan, unit }) {
     const u = (DB.unitServer || []).find(x => x.nama === unit);
-    const { error } = await SB.from('pegawai').update({
-      nama: nama.trim(),
-      nik: nik.trim(),
-      jabatan: jabatan.trim() || null,
-      unit_id: u ? u.id : null,
-    }).eq('id', id);
+    const hasil = await this.pastikanTertulis(
+      await SB.from('pegawai').update({
+        nama: nama.trim(),
+        nik: nik.trim(),
+        jabatan: jabatan.trim() || null,
+        unit_id: u ? u.id : null,
+      }).eq('id', id).select('id'),
+      e => this.pesanTerdaftar(e));
 
-    if (error) return { ok: false, pesan: this.pesanTerdaftar(error) };
+    if (!hasil.ok) return hasil;
     await this.muatPegawai();
     await this.muatKehadiran();
     return { ok: true };
@@ -80,8 +129,9 @@ const SRV = {
    * sesi berikutnya ditolak, dan namanya keluar dari daftar aktif.
    */
   async nonaktifkanPegawai(id) {
-    const { error } = await SB.from('pegawai').update({ aktif: false }).eq('id', id);
-    if (error) return { ok: false, pesan: pesanGalat(error) };
+    const hasil = await this.pastikanTertulis(
+      await SB.from('pegawai').update({ aktif: false }).eq('id', id).select('id'));
+    if (!hasil.ok) return hasil;
     await this.muatPegawai();
     await this.muatKehadiran();
     return { ok: true };
@@ -380,8 +430,9 @@ const SRV = {
   },
 
   async gantiNamaUnit(id, nama) {
-    const { error } = await SB.from('unit_kerja').update({ nama: nama.trim() }).eq('id', id);
-    if (error) return { ok: false, pesan: pesanGalat(error) };
+    const hasil = await this.pastikanTertulis(
+      await SB.from('unit_kerja').update({ nama: nama.trim() }).eq('id', id).select('id'));
+    if (!hasil.ok) return hasil;
     await this.muatUnit();
     await this.muatPegawai();
     return { ok: true, pesan: `Unit diganti menjadi "${nama}".` };
@@ -423,8 +474,9 @@ const SRV = {
   },
 
   async hapusTerdaftar(id) {
-    const { error } = await SB.from('pegawai_terdaftar').delete().eq('id', id);
-    if (error) return { ok: false, pesan: pesanGalat(error) };
+    const hasil = await this.pastikanTertulis(
+      await SB.from('pegawai_terdaftar').delete().eq('id', id).select('id'));
+    if (!hasil.ok) return hasil;
     await this.muatTerdaftar();
     return { ok: true, pesan: 'Dihapus dari daftar.' };
   },
@@ -495,8 +547,9 @@ const SRV = {
   },
 
   async putuskanPengajuan(id, status) {
-    const { error } = await SB.from('pengajuan').update({ status }).eq('id', id);
-    if (error) return { ok: false, pesan: pesanGalat(error) };
+    const hasil = await this.pastikanTertulis(
+      await SB.from('pengajuan').update({ status }).eq('id', id).select('id'));
+    if (!hasil.ok) return hasil;
     await this.muatPengajuan();
     return { ok: true };
   },
@@ -596,13 +649,30 @@ const SRV = {
      ============================================================ */
 
   async simpanKantor({ nama, alamat, lat, lng, radius }) {
-    const { error } = await SB.from('pengaturan').update({
-      kantor_nama: nama, kantor_alamat: alamat,
-      kantor_lat: lat, kantor_lng: lng, radius,
-      diubah: new Date().toISOString(),
-    }).eq('id', 1);
-    if (error) return { ok: false, pesan: pesanGalat(error) };
+    const hasil = await this.pastikanTertulis(
+      await SB.from('pengaturan').update({
+        kantor_nama: nama, kantor_alamat: alamat,
+        kantor_lat: lat, kantor_lng: lng, radius,
+        diubah: new Date().toISOString(),
+      }).eq('id', 1).select('kantor_lat, kantor_lng, radius'));
+
+    if (!hasil.ok) return hasil;
+
     await PRESENSI.muatPengaturan();
+
+    // Bandingkan dengan apa yang benar-benar terbaca kembali. Titik kantor
+    // menentukan siapa yang boleh absen; kalau server menyimpan angka lain
+    // dari yang diketik, itu harus ketahuan sekarang — bukan besok pagi
+    // saat seluruh kantor gagal check-in.
+    const k = DB.kantor;
+    const meleset = Math.abs(k.lat - lat) > 1e-6 || Math.abs(k.lng - lng) > 1e-6;
+    if (meleset) {
+      return {
+        ok: false,
+        pesan: `Server menyimpan ${k.lat.toFixed(6)}, ${k.lng.toFixed(6)} — bukan yang Anda isi. Coba simpan sekali lagi.`,
+      };
+    }
+
     return { ok: true, pesan: 'Titik kantor tersimpan. Seluruh perangkat ikut memakainya.' };
   },
 
