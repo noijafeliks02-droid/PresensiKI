@@ -17,7 +17,7 @@
     }
   } catch { /* localStorage diblokir — biarkan mode terang */ }
 </script>
-<link rel="stylesheet" href="assets/css/tokens.css?v=20260802a">
+<link rel="stylesheet" href="assets/css/tokens.css?v=20260802b">
 <style>
   body {
     min-height: 100vh; display: flex; align-items: center; justify-content: center;
@@ -94,7 +94,7 @@
   </div>
 </div>
 
-<script src="assets/js/icons.js?v=20260802a"></script>
+<script src="assets/js/icons.js?v=20260802b"></script>
 <script>
   document.getElementById('ic1').innerHTML = icon('check-clipboard', 23, 'var(--goldInk)', 2.6);
   document.getElementById('ic2').innerHTML = icon('grid', 23, 'var(--goldInk)', 2.6);
@@ -110,7 +110,7 @@
      halaman dimuat ulang SEKALI dengan alamat baru supaya HTML ikut segar.
      Penjaga sessionStorage mencegah putaran muat-ulang tanpa henti. */
   (function () {
-    var VERSI = '20260802a';
+    var VERSI = '20260802b';
     fetch('versi.json?t=' + Date.now(), { cache: 'no-store' })
       .then(function (r) { return r.json(); })
       .then(function (v) {

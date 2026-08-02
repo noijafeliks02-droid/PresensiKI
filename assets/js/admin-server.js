@@ -428,6 +428,96 @@ const SRV = {
   },
 
   /* ============================================================
+     Bersihkan data uji coba
+     ------------------------------------------------------------
+     Dibuat untuk satu keperluan: menghapus jejak pengujian sebelum
+     sistem ini diperagakan atau dipakai sungguhan.
+
+     Ini penghapusan PERMANEN, tanpa pembatalan. Sistem presensi ada
+     justru untuk menjadi catatan; sekali dihapus, tidak ada tempat lain
+     yang menyimpannya. Karena itu jumlahnya dihitung dan diperlihatkan
+     lebih dulu, dan penghapusannya menuntut kata yang harus diketik.
+
+     Yang TIDAK ikut terhapus: akun pegawai, daftar pendaftaran, unit
+     kerja, titik kantor, dan lampiran surat dokter. Membersihkan jejak
+     uji coba tidak berarti membongkar sistemnya.
+     ============================================================ */
+
+  /** Berapa banyak yang akan terhapus, untuk diperlihatkan sebelum eksekusi. */
+  async hitungDataUji() {
+    const [pres, peng] = await Promise.all([
+      SB.from('presensi').select('id, foto_masuk, foto_keluar'),
+      SB.from('pengajuan').select('id'),
+    ]);
+    if (pres.error) throw pres.error;
+
+    const foto = (pres.data || [])
+      .flatMap(r => [r.foto_masuk, r.foto_keluar])
+      .filter(Boolean);
+
+    return {
+      presensi: (pres.data || []).length,
+      pengajuan: (peng.data || []).length,
+      foto: foto.length,
+      jalurFoto: foto,
+    };
+  },
+
+  /**
+   * Hapus seluruh catatan presensi beserta foto buktinya.
+   *
+   * Fotonya dihapus lebih dulu, dan HANYA yang tercatat pada baris
+   * presensi. Lampiran surat dokter tinggal di bucket yang sama tetapi
+   * milik pengajuan cuti, bukan presensi — menghapus seisi bucket akan
+   * ikut membuang berkas yang tidak ada urusannya dengan absen.
+   *
+   * Kalau penghapusan foto gagal, barisnya TETAP dihapus. Membiarkan
+   * catatan presensi bertahan hanya karena satu berkas gambar gagal
+   * dibuang berarti pekerjaannya tidak pernah selesai; foto yatim bisa
+   * dibersihkan belakangan, catatan yang tertinggal tidak.
+   */
+  async hapusSemuaPresensi(jugaPengajuan = false) {
+    let fotoGagal = 0;
+    const hitung = await this.hitungDataUji();
+
+    if (hitung.jalurFoto.length) {
+      const { error } = await SB.storage
+        .from(PRESENSI.BUCKET)
+        .remove(hitung.jalurFoto);
+      if (error) fotoGagal = hitung.jalurFoto.length;
+    }
+
+    // PostgREST menolak delete tanpa penyaring, sebagai pengaman.
+    // Penyaring ini sengaja mencakup semuanya.
+    const { error } = await SB.from('presensi')
+      .delete()
+      .gte('tanggal', '1900-01-01');
+    if (error) return { ok: false, pesan: pesanGalat(error) };
+
+    let pengajuanTerhapus = 0;
+    if (jugaPengajuan) {
+      const { error: e2 } = await SB.from('pengajuan')
+        .delete()
+        .gte('mulai', '1900-01-01');
+      if (e2) return { ok: false, pesan: pesanGalat(e2) };
+      pengajuanTerhapus = hitung.pengajuan;
+    }
+
+    await this.muatKehadiran();
+    await this.muatTanggalBukti();
+    await this.muatTren();
+    await this.muatPengajuan();
+
+    return {
+      ok: true,
+      presensi: hitung.presensi,
+      pengajuan: pengajuanTerhapus,
+      foto: hitung.foto - fotoGagal,
+      fotoGagal,
+    };
+  },
+
+  /* ============================================================
      Pengaturan kantor
      ============================================================ */
 

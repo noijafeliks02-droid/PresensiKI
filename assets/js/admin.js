@@ -1356,11 +1356,155 @@ function viewLokasi() {
         </div>
       </div>
       <div style="margin-top:16px;background:var(--blue-bg);border-radius:12px;padding:13px 15px;font-size:12.5px;color:var(--blue);font-weight:600;line-height:1.5">
-        Perubahan langsung dipakai aplikasi pegawai di perangkat yang sama.
-        Pada versi berbackend, nilai ini disimpan di server dan disebarkan ke semua pegawai.
+        ${adminSah()
+    ? 'Tersimpan di server. Seluruh perangkat langsung memakai nilai ini — tidak perlu disetel satu per satu.'
+    : 'Perubahan langsung dipakai aplikasi pegawai di perangkat yang sama.'}
       </div>
     </div>
+  </div>
+
+  ${adminSah() ? panelBersihkan() : ''}`;
+}
+
+/**
+ * Wilayah berbahaya — penghapusan permanen.
+ *
+ * Diletakkan di halaman pengaturan, paling bawah, dan bukan di layar
+ * yang sering dibuka sambil memeriksa data. Tombol yang menghapus
+ * seluruh catatan presensi tidak boleh berada satu genggaman dari
+ * tombol yang dipakai sehari-hari.
+ */
+function panelBersihkan() {
+  return `
+  <div class="panel" style="margin-top:22px;border:1.5px solid var(--danger)">
+    <div class="panel-head">
+      <div>
+        <div class="t" style="color:var(--danger)">Bersihkan data uji coba</div>
+        <div class="s">Menghapus seluruh catatan presensi beserta foto buktinya. Permanen.</div>
+      </div>
+      <button class="btn-hapus" data-aksi="dialogBersihkan">
+        ${icon('hapus', 16, 'currentColor', 2.4)} Bersihkan
+      </button>
+    </div>
+    <div style="padding:4px 0 6px;font-size:13px;line-height:1.7;color:var(--text-2)">
+      <p style="margin:0 0 10px">
+        Dibuat untuk satu keperluan: menghapus jejak pengujian sebelum sistem ini
+        dipakai sungguhan, supaya dashboard tidak dipenuhi absen percobaan.
+      </p>
+      <p style="margin:0 0 10px">
+        <strong>Tidak ikut terhapus:</strong> akun pegawai, daftar pendaftaran,
+        unit kerja, titik kantor, dan lampiran surat dokter. Membersihkan jejak
+        uji coba bukan membongkar sistemnya.
+      </p>
+      <p style="margin:0;color:var(--danger);font-weight:700">
+        Tidak ada pembatalan. Catatan presensi tidak tersimpan di tempat lain —
+        sekali dihapus, hilang.
+      </p>
+    </div>
   </div>`;
+}
+
+/** Konfirmasi penghapusan, dengan jumlah sebenarnya dan kata yang harus diketik. */
+async function dialogBersihkan() {
+  bukaModal(`
+    <div class="modal-head">
+      <div style="flex:1"><div class="t">Menghitung…</div></div>
+    </div>
+    <div class="modal-isi"><div class="kosong">Membaca jumlah catatan dari server.</div></div>`);
+
+  let n;
+  try {
+    n = await SRV.hitungDataUji();
+  } catch (e) {
+    tutupModal();
+    toast(pesanGalat(e), 'err');
+    return;
+  }
+
+  if (n.presensi === 0 && n.pengajuan === 0) {
+    tutupModal();
+    toast('Tidak ada catatan presensi maupun pengajuan untuk dihapus.');
+    return;
+  }
+
+  bukaModal(`
+    <form id="formBersihkan">
+      <div class="modal-head">
+        <div style="flex:1">
+          <div class="t">Bersihkan Data Uji Coba</div>
+          <div class="s">Periksa jumlahnya sebelum melanjutkan.</div>
+        </div>
+        <button type="button" class="modal-tutup" data-aksi="tutupModal" aria-label="Tutup">
+          ${icon('close', 18, 'var(--text-2)', 2.4)}
+        </button>
+      </div>
+      <div class="modal-isi">
+        <div class="modal-bahaya">
+          Akan dihapus permanen: <strong>${fmtAngka(n.presensi)} catatan presensi</strong>
+          dan <strong>${fmtAngka(n.foto)} foto bukti</strong>.
+          Tidak ada cara mengembalikannya.
+        </div>
+
+        ${n.pengajuan ? `
+          <label style="display:flex;gap:10px;align-items:flex-start;margin-top:18px;cursor:pointer">
+            <input type="checkbox" name="pengajuan" style="margin-top:3px">
+            <span style="font-size:13.5px;line-height:1.6;color:var(--text-2)">
+              Hapus juga <strong>${fmtAngka(n.pengajuan)} pengajuan izin &amp; cuti</strong>.
+              Lampiran surat dokternya tetap tersimpan.
+            </span>
+          </label>` : ''}
+
+        <div class="form-row" style="margin-top:18px">
+          <label for="ketikHapus">Ketik <strong>HAPUS</strong> untuk melanjutkan</label>
+          <input id="ketikHapus" name="ketik" type="text" autocomplete="off"
+                 placeholder="HAPUS" style="text-transform:uppercase">
+          <div class="form-bantu">
+            Diminta mengetik, bukan sekadar menekan — supaya tidak ada yang terhapus
+            karena klik yang tidak disengaja.
+          </div>
+        </div>
+        <div id="errBersihkan"></div>
+      </div>
+      <div class="modal-kaki">
+        <button type="button" class="btn" data-aksi="tutupModal">Batal</button>
+        <button type="submit" class="btn-hapus">
+          ${icon('hapus', 16, 'currentColor', 2.4)} Hapus permanen
+        </button>
+      </div>
+    </form>`);
+
+  document.getElementById('formBersihkan').addEventListener('submit', async e => {
+    e.preventDefault();
+    const f = e.target;
+    const err = document.getElementById('errBersihkan');
+
+    if (f.ketik.value.trim().toUpperCase() !== 'HAPUS') {
+      err.innerHTML = '<div class="modal-bahaya" style="margin-top:14px">Ketik HAPUS persis untuk melanjutkan.</div>';
+      return;
+    }
+
+    const tombol = f.querySelector('button[type="submit"]');
+    tombol.disabled = true;
+    tombol.textContent = 'Menghapus…';
+
+    const r = await SRV.hapusSemuaPresensi(!!(f.pengajuan && f.pengajuan.checked));
+    if (!r.ok) {
+      tombol.disabled = false;
+      err.innerHTML = `<div class="modal-bahaya" style="margin-top:14px">${esc(r.pesan)}</div>`;
+      return;
+    }
+
+    tutupModal();
+    render();
+
+    const bagian = [`${r.presensi} catatan presensi`, `${r.foto} foto`];
+    if (r.pengajuan) bagian.push(`${r.pengajuan} pengajuan`);
+    toast(`Terhapus: ${bagian.join(', ')}.`, 'err');
+
+    if (r.fotoGagal) {
+      setTimeout(() => toast(`${r.fotoGagal} foto gagal dihapus dari penyimpanan, tetapi catatannya sudah hilang.`, 'err'), 2800);
+    }
+  });
 }
 
 /* ============================================================
@@ -2026,6 +2170,7 @@ const AKSI = {
 
   /* Kelola pegawai & unit kerja */
   tambahPegawai: () => dialogPegawai(null),
+  dialogBersihkan: () => dialogBersihkan(),
   tambahTerdaftar: () => dialogTambahTerdaftar(),
 
   hapusTerdaftar: async (el) => {

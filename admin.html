@@ -19,8 +19,8 @@
 <!-- Leaflet: peta asli. Bila offline, gagal dimuat dan panel otomatis
      kembali memakai peta ilustratif (lihat petaTersedia() di peta.js). -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="assets/css/tokens.css?v=20260802a">
-<link rel="stylesheet" href="assets/css/admin.css?v=20260802a">
+<link rel="stylesheet" href="assets/css/tokens.css?v=20260802b">
+<link rel="stylesheet" href="assets/css/admin.css?v=20260802b">
 </head>
 <body>
 
@@ -40,18 +40,18 @@
 <div id="toast"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="assets/js/icons.js?v=20260802a"></script>
-<script src="assets/js/util.js?v=20260802a"></script>
+<script src="assets/js/icons.js?v=20260802b"></script>
+<script src="assets/js/util.js?v=20260802b"></script>
 <!-- Pustaka Supabase disimpan di dalam proyek, bukan dipanggil dari CDN,
      supaya panel admin tetap jalan walau layanan pihak ketiga bermasalah. -->
-<script src="assets/js/vendor/supabase.js?v=20260802a"></script>
-<script src="assets/js/supabase-klien.js?v=20260802a"></script>
-<script src="assets/js/akun.js?v=20260802a"></script>
-<script src="assets/js/data.js?v=20260802a"></script>
-<script src="assets/js/presensi.js?v=20260802a"></script>
-<script src="assets/js/admin-server.js?v=20260802a"></script>
-<script src="assets/js/peta.js?v=20260802a"></script>
-<script src="assets/js/admin.js?v=20260802a"></script>
+<script src="assets/js/vendor/supabase.js?v=20260802b"></script>
+<script src="assets/js/supabase-klien.js?v=20260802b"></script>
+<script src="assets/js/akun.js?v=20260802b"></script>
+<script src="assets/js/data.js?v=20260802b"></script>
+<script src="assets/js/presensi.js?v=20260802b"></script>
+<script src="assets/js/admin-server.js?v=20260802b"></script>
+<script src="assets/js/peta.js?v=20260802b"></script>
+<script src="assets/js/admin.js?v=20260802b"></script>
 <script>
   /* Pemeriksa versi.
      GitHub Pages menyimpan HTML di cache hingga 10 menit, sehingga halaman
@@ -61,7 +61,7 @@
      halaman dimuat ulang SEKALI dengan alamat baru supaya HTML ikut segar.
      Penjaga sessionStorage mencegah putaran muat-ulang tanpa henti. */
   (function () {
-    var VERSI = '20260802a';
+    var VERSI = '20260802b';
     fetch('versi.json?t=' + Date.now(), { cache: 'no-store' })
       .then(function (r) { return r.json(); })
       .then(function (v) {
