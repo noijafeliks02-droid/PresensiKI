@@ -155,28 +155,23 @@ grant execute on function public.hapus_pegawai(uuid, boolean) to authenticated;
 
 -- ============================================================
 -- PERIKSA
+-- ------------------------------------------------------------
+-- Ditulis sebagai `select`, bukan `raise notice`. Editor SQL Supabase
+-- hanya menampilkan hasil select sebagai tabel; pesan notice tidak
+-- pernah muncul di layar, sehingga pemeriksaan yang memakainya tampak
+-- seperti tidak berjalan.
+--
+-- Yang benar: DUA baris, keduanya bertanda ✔.
 -- ============================================================
-do $$
-declare n int;
-begin
-  select count(*) into n from pg_proc p
-    join pg_namespace s on s.oid = p.pronamespace
-   where s.nspname = 'public' and p.proname in ('hapus_pegawai', 'hitung_data_pegawai');
-  if n = 2 then
-    raise notice 'OK — hapus_pegawai() dan hitung_data_pegawai() terpasang.';
-  else
-    raise exception 'GAGAL — hanya % dari 2 fungsi yang terpasang.', n;
-  end if;
-
-  select count(*) into n from pg_proc p
-    join pg_namespace s on s.oid = p.pronamespace
-   where s.nspname = 'public'
-     and p.proname in ('hapus_pegawai', 'hitung_data_pegawai')
-     and p.prosecdef;
-  if n = 2 then
-    raise notice 'OK — keduanya security definer.';
-  else
-    raise exception 'GAGAL — % fungsi tidak security definer.', 2 - n;
-  end if;
-end
-$$;
+select
+  p.proname                                                  as fungsi,
+  case when p.prosecdef then '✔ security definer'
+       else                  '✗ BIASA — ULANGI BERKAS INI' end as mode,
+  case when has_function_privilege('authenticated', p.oid, 'execute')
+       then '✔ boleh dipanggil admin'
+       else '✗ hak eksekusi belum diberikan' end             as hak
+from pg_proc p
+join pg_namespace s on s.oid = p.pronamespace
+where s.nspname = 'public'
+  and p.proname in ('hapus_pegawai', 'hitung_data_pegawai')
+order by 1;
