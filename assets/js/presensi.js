@@ -219,6 +219,19 @@ const PRESENSI = {
      ini" — nilainya langsung ditimpa waktu server oleh pemicu.
      ============================================================ */
 
+  /**
+   * Bulatkan nilai untuk kolom bilangan bulat.
+   *
+   * Peramban memberi ketelitian GPS sebagai pecahan (mis. 15,987 m) dan
+   * Postgres menolaknya dengan "invalid input syntax for type integer".
+   * Sudah dibulatkan di sumbernya juga; ini penjaga kedua supaya jalur
+   * mana pun yang mengirim angka mentah tidak menggagalkan presensi
+   * orang di depan kamera.
+   */
+  bulat(n) {
+    return Number.isFinite(n) ? Math.round(n) : null;
+  },
+
   async checkIn({ foto, verifikasi, lat, lng, akurasi, jarak }) {
     if (!AKUN.profil) return { ok: false, pesan: 'Anda belum masuk.' };
 
@@ -232,7 +245,7 @@ const PRESENSI = {
         foto_masuk: jalur,
         verifikasi_masuk: verifikasi,
         lat_masuk: lat, lng_masuk: lng,
-        akurasi_masuk: akurasi, jarak_masuk: jarak,
+        akurasi_masuk: this.bulat(akurasi), jarak_masuk: this.bulat(jarak),
       })
       .select()
       .single();
@@ -260,7 +273,7 @@ const PRESENSI = {
         foto_keluar: jalur,
         verifikasi_keluar: verifikasi,
         lat_keluar: lat, lng_keluar: lng,
-        akurasi_keluar: akurasi, jarak_keluar: jarak,
+        akurasi_keluar: this.bulat(akurasi), jarak_keluar: this.bulat(jarak),
       })
       .eq('pegawai_id', AKUN.profil.id)
       .eq('tanggal', this.tanggalServer())

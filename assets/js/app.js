@@ -155,7 +155,14 @@ function mulaiGPS() {
       const berubah = S.gps.status !== 'ok' || Math.abs((S.gps.jarak ?? 0) - jarak) >= 1;
 
       Object.assign(S.gps, {
-        status: 'ok', lat: latitude, lng: longitude, akurasi: accuracy,
+        status: 'ok', lat: latitude, lng: longitude,
+        // Peramban memberi ketelitian sebagai pecahan, mis. 15,987 m.
+        // Kolomnya di basis data bilangan bulat, dan pecahan ditolak
+        // Postgres. Dibulatkan di sini, di sumbernya, supaya seluruh
+        // pemakainya ikut benar — bukan hanya jalur yang kebetulan
+        // teringat. Ketelitian sampai sepersejuta meter tidak berarti
+        // apa-apa bagi GPS yang meleset belasan meter.
+        akurasi: Math.round(accuracy),
         jarak: Math.round(jarak), dalam: jarak <= k.radius, pesan: '',
       });
       if (!berubah) return;
