@@ -36,6 +36,14 @@ const SHIFT = {
   masuk: '07:30',
   batasTerlambat: '08:00',   // lewat jam ini dihitung terlambat
   pulang: '16:00',
+
+  /* Batas jam presensi MASUK. Di luar rentang ini presensi ditolak —
+     bukan sekadar diberi status berbeda. Nilainya ditimpa oleh
+     pengaturan dari server begitu pegawai masuk; angka di sini hanya
+     cadangan, dan sengaja sama dengan bawaan di server supaya keduanya
+     tidak pernah berselisih. */
+  palingAwal: '05:00',
+  palingAkhir: '20:00',
 };
 
 /** Akurasi GPS terburuk yang masih diterima (meter). */
@@ -69,22 +77,17 @@ const URUTAN_VERIFIKASI = [
 
 const PROFIL = {
   nama: 'Budi Santoso',
-  nip: '198504122010011003',
+  nik: '198504122010011003',
   jabatan: 'Staf Teknik Jalan & Jembatan',
   unit: 'Ditjen Bina Marga',
   cutiKuota: 12,
   cutiTerpakai: 4,
 };
 
-/**
- * Kredensial demo panel admin.
- *
- * Ini prototipe tanpa backend, jadi pemeriksaannya berjalan di peramban.
- * Gerbang ini menahan orang yang tidak tahu kata sandinya — bukan orang
- * yang bisa membuka alat pengembang. Pengamanan sungguhan baru mungkin
- * setelah ada backend yang memeriksa sandi di sisi server.
- */
-const AKUN_ADMIN = { nip: '196804251994031002', sandi: 'admin123' };
+/* Kredensial demo panel admin sudah dihapus.
+   Gerbang admin kini memakai akun Supabase sungguhan, dan perannya
+   diperiksa di server — bukan sandi tetap yang dicocokkan di peramban
+   dan bisa dibaca siapa pun yang membuka kode sumber halaman. */
 
 const UNIT_KERJA = [
   'Ditjen Bina Marga',
@@ -128,7 +131,7 @@ function bangunPegawai() {
     daftar.push({
       id: i + 1,
       nama,
-      nip: `19${80 + Math.floor(r() * 20)}${pad2(1 + Math.floor(r() * 12))}${pad2(1 + Math.floor(r() * 28))}20${pad2(5 + Math.floor(r() * 15))}${Math.floor(r() * 2) + 1}001`,
+      nik: `19${80 + Math.floor(r() * 20)}${pad2(1 + Math.floor(r() * 12))}${pad2(1 + Math.floor(r() * 28))}20${pad2(5 + Math.floor(r() * 15))}${Math.floor(r() * 2) + 1}001`,
       unit: UNIT_KERJA[Math.floor(r() * UNIT_KERJA.length)],
       jabatan: JABATAN[Math.floor(r() * JABATAN.length)],
       inisial: inisial(nama),
@@ -403,7 +406,7 @@ const DB = {
     // Suntingan data pegawai dari panel admin. Roster dasar tetap
     // dibangkitkan ulang tiap muat, lalu tiga daftar ini ditumpangkan
     // di atasnya — jadi hanya perubahan nyata yang perlu disimpan.
-    pegawaiUbah: {},     // { [id]: {nama, nip, unit, jabatan} }
+    pegawaiUbah: {},     // { [id]: {nama, nik, unit, jabatan} }
     pegawaiBaru: [],     // pegawai yang ditambahkan admin
     arsipPresensi: [],   // presensi hari-hari sebelumnya, lengkap dengan fotonya
     pegawaiHapus: [],    // id pegawai yang dinonaktifkan
@@ -518,8 +521,24 @@ const DB = {
      Roster pegawai
      ============================================================ */
 
-  /** Bangun ulang daftar pegawai dari roster dasar + suntingan admin. */
+  /**
+   * Bangun ulang daftar pegawai dari roster dasar + suntingan admin.
+   *
+   * PENJAGA: begitu roster datang dari server, fungsi ini tidak boleh
+   * berjalan sama sekali. Isinya membangun ulang 26 pegawai contoh dan
+   * menimpa `this.pegawai` — pernah terjadi, dan akibatnya daftar
+   * pegawai sungguhan lenyap diganti nama-nama karangan lengkap dengan
+   * unit "Ditjen" yang sudah tidak dipakai.
+   *
+   * Penjagaannya ditaruh di sini, bukan di tiap pemanggil, supaya jalur
+   * lama mana pun yang terlewat tidak bisa merusak data nyata.
+   */
   susunPegawai() {
+    if (this.pegawaiServer) {
+      this.pegawai = this.pegawaiServer.filter(p => p.aktif);
+      return;
+    }
+
     const s = this.simpanan;
     const dihapus = new Set(s.pegawaiHapus);
 
@@ -548,6 +567,20 @@ const DB = {
    * `nama` adalah nama yang sedang berlaku setelah kemungkinan diganti.
    */
   daftarUnit() {
+    // Setelah admin masuk, unit kerja datang dari server. Daftar bawaan
+    // di bawah hanya dipakai sebelum ada yang login — kalau tidak,
+    // kartu statistik akan melaporkan delapan unit contoh padahal
+    // servernya hanya punya satu.
+    if (this.unitServer) {
+      return this.unitServer.map(u => ({
+        asal: u.id,
+        nama: u.nama,
+        bawaan: false,
+        diganti: false,
+        jumlah: this.pegawai.filter(p => p.unit === u.nama).length,
+      }));
+    }
+
     const s = this.simpanan;
     const dihapus = new Set(s.unitHapus);
     return [...UNIT_KERJA, ...s.unitTambahan]
@@ -642,7 +675,7 @@ const DB = {
       s.pegawaiBaru[i] = { ...s.pegawaiBaru[i], ...data, inisial: inisial(data.nama) };
     } else {
       s.pegawaiUbah[data.id] = {
-        nama: data.nama, nip: data.nip, unit: data.unit, jabatan: data.jabatan,
+        nama: data.nama, nik: data.nik, unit: data.unit, jabatan: data.jabatan,
       };
     }
     this.susunPegawai();
@@ -678,9 +711,9 @@ const DB = {
     return this.daftarUnit().some(u => u.asal !== kecualiAsal && u.nama.toLowerCase() === bersih);
   },
 
-  /** Apakah NIP sudah dipakai pegawai lain? */
-  nipDipakai(nip, kecualiId) {
-    return this.pegawai.some(p => p.nip === nip && p.id !== kecualiId);
+  /** Apakah NIK sudah dipakai pegawai lain? */
+  nikDipakai(nik, kecualiId) {
+    return this.pegawai.some(p => p.nik === nik && p.id !== kecualiId);
   },
 
   /* ============================================================
@@ -729,7 +762,7 @@ const DB = {
 
     const dariAku = (rekamAku && aku) ? [{
       pegawaiId: aku.id,
-      nama: aku.nama, inisial: aku.inisial, nip: aku.nip,
+      nama: aku.nama, inisial: aku.inisial, nik: aku.nik,
       unit: aku.unit, jabatan: aku.jabatan,
       tanggal,
       jamMasuk: rekamAku.jamMasuk,
@@ -757,7 +790,7 @@ const DB = {
       .filter(p => p.id !== 1)
       .map(p => ({
         pegawaiId: p.id,
-        nama: p.nama, inisial: p.inisial, nip: p.nip,
+        nama: p.nama, inisial: p.inisial, nik: p.nik,
         unit: p.unit, jabatan: p.jabatan,
         tanggal,
         jamMasuk: p.jamMasuk,
@@ -782,7 +815,7 @@ const DB = {
       const p = this.kehadiranHariIni.find(x => x.id === 1);
       if (p) {
         lain.unshift({
-          pegawaiId: aku.id, nama: aku.nama, inisial: aku.inisial, nip: aku.nip,
+          pegawaiId: aku.id, nama: aku.nama, inisial: aku.inisial, nik: aku.nik,
           unit: aku.unit, jabatan: aku.jabatan, tanggal,
           jamMasuk: '—', jamKeluar: '—', status: 'Belum absen',
           foto: null, fotoAsli: false,
@@ -859,7 +892,17 @@ const DB = {
   get presensi() { return this.simpanan.presensi; },
   get pengajuan() { return this.simpanan.pengajuan; },
 
-  pengajuanSaya() { return this.pengajuan.filter(p => p.pegawaiId === 1); },
+  /**
+   * Pengajuan milik pemilik akun.
+   *
+   * Setelah masuk, disaring dengan id akun dari server. Dulu dipatok ke
+   * angka 1 — id pegawai contoh — dan itu tidak akan pernah cocok dengan
+   * id server, sehingga daftar izin pegawai selalu tampil kosong.
+   */
+  pengajuanSaya() {
+    const id = (typeof AKUN !== 'undefined' && AKUN.profil) ? AKUN.profil.id : 1;
+    return this.pengajuan.filter(p => p.pegawaiId === id);
+  },
   pengajuanMenunggu() { return this.pengajuan.filter(p => p.status === 'Menunggu'); },
 
   /** Ringkasan angka untuk kartu statistik dashboard admin. */

@@ -12,8 +12,25 @@ DB.muat();
 /** Hasil penerapan tautan ?setup=, ditampilkan setelah layar pertama dirender. */
 const HASIL_SETUP = DB.terapkanSetupDariUrl();
 
+/**
+ * Apakah ada sesi tersimpan di perangkat ini?
+ *
+ * Diperiksa serentak (bukan lewat server) hanya untuk memilih layar
+ * pertama. Memastikan sesinya masih sah butuh panggilan ke server yang
+ * memakan waktu; tanpa penanda ini, pegawai yang sudah masuk akan
+ * melihat layar login berkelebat dulu setiap kali membuka aplikasi.
+ * Ini penanda tampilan, bukan penentu hak akses — yang menentukan
+ * tetap jawaban server.
+ */
+const ADA_SESI_TERSIMPAN = (() => {
+  try {
+    return Object.keys(localStorage).some(k => /^sb-.+-auth-token$/.test(k));
+  } catch { return false; }
+})();
+
 const S = {
-  layar: DB.simpanan.masuk ? 'home' : 'login',
+  layar: ADA_SESI_TERSIMPAN ? 'memuat' : 'login',
+  emailIsian: '',
   sekarang: new Date(),
   bulan: { tahun: new Date().getFullYear(), bulan: new Date().getMonth() },
   gps: { status: 'menunggu', lat: null, lng: null, akurasi: null, jarak: null, dalam: false, pesan: '' },
@@ -58,14 +75,27 @@ const $nav = document.getElementById('nav');
 const $toast = document.getElementById('toast');
 
 /**
- * Profil pemilik akun. Dibaca dari DB, bukan dari konstanta PROFIL,
- * supaya perubahan data yang dilakukan admin langsung terlihat di sini.
+ * Profil pemilik akun.
+ *
+ * Sumber utamanya adalah tabel `pegawai` di server — nama, NIK, jabatan,
+ * dan unit selalu ikut perubahan yang dilakukan admin, dan tidak pernah
+ * tertinggal di HP setelah orangnya keluar. Data contoh dari data.js
+ * hanya dipakai sebelum ada yang masuk, supaya layar tidak kosong.
  */
 let AKU = DB.profil();
 let inisialAku = inisial(AKU.nama);
 
 function segarkanProfil() {
-  AKU = DB.profil();
+  if (AKUN.profil) {
+    AKU = {
+      ...AKUN.profil,
+      // Sisa cuti masih dihitung dari pengajuan yang tersimpan di
+      // perangkat; pindah ke server bersama menu Izin & Cuti nanti.
+      cutiTerpakai: DB.profil().cutiTerpakai,
+    };
+  } else {
+    AKU = DB.profil();
+  }
   inisialAku = inisial(AKU.nama);
 }
 
@@ -152,7 +182,43 @@ function mulaiGPS() {
  * besar radius. Pegawai cukup tahu bahwa presensi harus dilakukan di
  * kantor. Angka lengkapnya tetap dicatat untuk audit admin.
  */
+/**
+ * Apakah sekarang masih dalam jam presensi?
+ *
+ * Ini pemeriksaan KENYAMANAN, bukan pengamanan: jam yang dipakai di
+ * sini jam perangkat, dan perangkatnya dipegang orang yang diawasi.
+ * Yang menentukan adalah pemicu di server, yang memakai jam server.
+ * Gunanya di sini supaya pegawai tidak menempuh seluruh verifikasi
+ * wajah dulu baru ditolak di ujung.
+ *
+ * Berlaku untuk presensi MASUK saja. Orang yang lembur sampai lewat
+ * tengah malam tetap harus bisa mencatat kepulangannya — menolaknya
+ * membuat catatan hari itu menggantung tanpa jam pulang.
+ */
+function dalamJamPresensi() {
+  const jam = new Intl.DateTimeFormat('en-GB', {
+    timeZone: PRESENSI.ZONA, hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(new Date());
+
+  const awal = SHIFT.palingAwal || '05:00';
+  const akhir = SHIFT.palingAkhir || '20:00';
+  return { ok: jam >= awal && jam <= akhir, jam, awal, akhir };
+}
+
 function bolehAbsen() {
+  // Batas jam berlaku lebih dulu daripada mode demo. Mode demo dibuat
+  // untuk melewati pengecekan LOKASI saat peragaan di luar kantor —
+  // bukan untuk membuka presensi tengah malam.
+  if (S.mode !== 'keluar') {
+    const j = dalamJamPresensi();
+    if (!j.ok) {
+      return {
+        ok: false,
+        alasan: `Presensi masuk hanya dapat dilakukan antara ${jamTampil(j.awal)} dan ${jamTampil(j.akhir)}. Sekarang pukul ${jamTampil(j.jam)}.`,
+      };
+    }
+  }
+
   if (DB.simpanan.modeDemo) return { ok: true };
   if (S.gps.status !== 'ok') return { ok: false, alasan: S.gps.pesan || 'Menunggu sinyal GPS…' };
   if (S.gps.akurasi > AKURASI_MAKS) {
@@ -182,47 +248,156 @@ function statusLokasi() {
    Layar 1 — Login
    ============================================================ */
 
-function layarLogin() {
+/** Kepala layar masuk/daftar — logo, wordmark, dan keterangan. */
+function kepalaLogin() {
   return `
-  <div class="login">
     <div class="login-atas">
       <img class="login-logo" src="assets/logo-pu.svg" alt="">
       <h1 class="login-wordmark">Kompas</h1>
       <hr class="garis-emas login-garis">
       <p class="login-desk">Konsultan On-site Mobile Presence &amp; Attendance System.</p>
-    </div>
+    </div>`;
+}
+
+/** Kotak kata sandi dengan tombol mata. */
+function isianSandi({ id, nama, label, autocomplete = 'current-password', placeholder = 'Kata sandi' }) {
+  return `
+    <div>
+      <label class="field-label" for="${id}">${esc(label)}</label>
+      <div class="field">
+        ${icon('lock', 18, 'var(--mut)', 2.2)}
+        <input id="${id}" name="${nama}" type="${S.lihatSandi ? 'text' : 'password'}"
+               autocomplete="${autocomplete}" placeholder="${esc(placeholder)}">
+        <button type="button" class="toggle" data-aksi="lihatSandi"
+                aria-label="${S.lihatSandi ? 'Sembunyikan' : 'Tampilkan'} kata sandi">
+          ${icon(S.lihatSandi ? 'eye-off' : 'eye', 18, 'var(--mut)', 2.2)}
+        </button>
+      </div>
+    </div>`;
+}
+
+/**
+ * Layar masuk.
+ *
+ * Emailnya yang diketik, bukan NIK. NIK tidak pernah diminta di layar
+ * mana pun aplikasi pegawai: itu data pribadi, dan sudah tersimpan di
+ * server sejak admin mendaftarkan orangnya.
+ */
+function layarLogin() {
+  return `
+  <div class="login">
+    ${kepalaLogin()}
 
     <form class="login-panel" id="formLogin" novalidate>
       <h2>Masuk</h2>
-      <div class="sub">Gunakan NIP dan kata sandi kepegawaian Anda.</div>
+      <div class="sub">Gunakan email dan kata sandi Anda.</div>
 
       <div class="login-form">
         <div>
-          <label class="field-label" for="inpNip">NIP</label>
+          <label class="field-label" for="inpEmail">Email</label>
           <div class="field">
             ${icon('user', 18, 'var(--mut)', 2.2)}
-            <input id="inpNip" name="nip" type="text" autocomplete="username"
-                   placeholder="198504122010011003" value="${esc(AKU.nip)}">
+            <input id="inpEmail" name="email" type="email" autocomplete="username"
+                   inputmode="email" placeholder="nama@email.com" value="${esc(S.emailIsian)}">
           </div>
         </div>
-        <div>
-          <label class="field-label" for="inpSandi">Kata sandi</label>
-          <div class="field">
-            ${icon('lock', 18, 'var(--mut)', 2.2)}
-            <input id="inpSandi" name="sandi" type="${S.lihatSandi ? 'text' : 'password'}"
-                   autocomplete="current-password" placeholder="Kata sandi" value="presensi123">
-            <button type="button" class="toggle" data-aksi="lihatSandi"
-                    aria-label="${S.lihatSandi ? 'Sembunyikan' : 'Tampilkan'} kata sandi">
-              ${icon(S.lihatSandi ? 'eye-off' : 'eye', 18, 'var(--mut)', 2.2)}
-            </button>
-          </div>
-        </div>
+        ${isianSandi({ id: 'inpSandi', nama: 'sandi', label: 'Kata sandi' })}
       </div>
 
       <div id="errLogin"></div>
       <button type="submit" class="btn-gold login-masuk">Masuk</button>
       <button type="button" class="login-lupa" data-aksi="lupaSandi">Lupa kata sandi?</button>
+      <button type="button" class="login-lupa" data-aksi="keDaftar">Belum punya akun? Daftar</button>
     </form>
+  </div>`;
+}
+
+/**
+ * Layar daftar.
+ *
+ * Emailnya harus sudah dimasukkan admin lebih dulu; kalau tidak,
+ * pendaftarannya ditolak server. Aplikasi sengaja tidak memeriksanya
+ * lebih awal — kalau layar ini bisa menjawab "email itu terdaftar",
+ * orang luar bisa memakainya untuk menebak siapa saja yang bekerja
+ * di kantor ini.
+ */
+function layarDaftar() {
+  return `
+  <div class="login">
+    ${kepalaLogin()}
+
+    <form class="login-panel" id="formDaftar" novalidate>
+      <h2>Daftar</h2>
+      <div class="sub">Pakai email yang sudah didaftarkan admin kepegawaian.</div>
+
+      <div class="login-form">
+        <div>
+          <label class="field-label" for="dafEmail">Email</label>
+          <div class="field">
+            ${icon('user', 18, 'var(--mut)', 2.2)}
+            <input id="dafEmail" name="email" type="email" autocomplete="username"
+                   inputmode="email" placeholder="nama@email.com" value="${esc(S.emailIsian)}">
+          </div>
+        </div>
+        ${isianSandi({
+          id: 'dafSandi', nama: 'sandi', label: 'Buat kata sandi',
+          autocomplete: 'new-password', placeholder: 'Minimal 8 karakter',
+        })}
+        ${isianSandi({
+          id: 'dafUlang', nama: 'ulang', label: 'Ulangi kata sandi',
+          autocomplete: 'new-password', placeholder: 'Ketik ulang',
+        })}
+      </div>
+
+      <div id="errDaftar"></div>
+      <button type="submit" class="btn-gold login-masuk">Buat akun</button>
+      <button type="button" class="login-lupa" data-aksi="keLogin">Sudah punya akun? Masuk</button>
+    </form>
+  </div>`;
+}
+
+/** Layar buat kata sandi baru — muncul setelah tautan dari email diklik. */
+function layarSandiBaru() {
+  return `
+  <div class="login">
+    ${kepalaLogin()}
+
+    <form class="login-panel" id="formSandiBaru" novalidate>
+      <h2>Kata sandi baru</h2>
+      <div class="sub">Buat kata sandi baru untuk akun Anda.</div>
+
+      <div class="login-form">
+        ${isianSandi({
+          id: 'barSandi', nama: 'sandi', label: 'Kata sandi baru',
+          autocomplete: 'new-password', placeholder: 'Minimal 8 karakter',
+        })}
+        ${isianSandi({
+          id: 'barUlang', nama: 'ulang', label: 'Ulangi kata sandi',
+          autocomplete: 'new-password', placeholder: 'Ketik ulang',
+        })}
+      </div>
+
+      <div id="errSandiBaru"></div>
+      <button type="submit" class="btn-gold login-masuk">Simpan kata sandi</button>
+    </form>
+  </div>`;
+}
+
+/**
+ * Layar antara saat sesi tersimpan sedang diperiksa ke server.
+ *
+ * Tanpa ini, pegawai yang membuka aplikasi dalam keadaan sudah masuk
+ * akan melihat layar login berkelebat lebih dulu — terlihat seperti
+ * aplikasi lupa siapa dirinya, padahal hanya sedang menunggu jawaban.
+ */
+function layarMemuat() {
+  return `
+  <div class="login">
+    ${kepalaLogin()}
+    <div class="login-panel">
+      <h2>Memuat</h2>
+      <div class="sub">Menghubungi server presensi…</div>
+    </div>
   </div>`;
 }
 
@@ -291,12 +466,28 @@ function layarHome() {
   </div>`;
 }
 
-/** Saldo cuti tahunan, memperhitungkan pengajuan yang sudah disetujui. */
+/**
+ * Saldo cuti tahunan.
+ *
+ * HANYA 'Cuti Tahunan' yang mengurangi kuota. Izin dan Sakit tidak
+ * dibatasi — orang tidak bisa menjadwalkan kapan dia sakit, dan
+ * memberinya jatah berarti menghukum orang karena jatuh sakit terlalu
+ * sering. Keduanya tetap butuh persetujuan atasan, dan di situlah
+ * kendalinya, bukan di angka kuota.
+ *
+ * Angka awalnya nol. Sebelumnya dimulai dari AKU.cutiTerpakai — nilai
+ * dari data contoh — sehingga pegawai yang belum pernah mengambil cuti
+ * sekali pun sudah tercatat memakai 4 hari.
+ */
 function hitungSisaCuti() {
+  const kuota = AKU.cutiKuota ?? 12;
+  const awal = AKUN.masuk_() ? 0 : (AKU.cutiTerpakai ?? 0);
+
   const terpakai = DB.pengajuanSaya()
     .filter(p => p.status === 'Disetujui' && p.jenis === 'Cuti Tahunan')
-    .reduce((n, p) => n + p.hari, AKU.cutiTerpakai ?? 0);
-  return { terpakai, sisa: Math.max(0, (AKU.cutiKuota ?? 12) - terpakai), kuota: AKU.cutiKuota ?? 12 };
+    .reduce((n, p) => n + p.hari, awal);
+
+  return { terpakai, sisa: Math.max(0, kuota - terpakai), kuota };
 }
 
 /* ============================================================
@@ -1156,11 +1347,25 @@ function ambilFotoPresensi(tombol) {
     hasil: v.fase === 'lolos' ? 'lolos' : (v.kameraGagal ? 'tanpaKamera' : 'lemah'),
   };
 
-  setTimeout(() => {
-    if (S.mode === 'keluar') simpanCheckOut(foto, verif);
-    else simpanCheckIn(foto, verif);
+  setTimeout(async () => {
     matikanKamera();
+    const r = S.mode === 'keluar'
+      ? await simpanCheckOut(foto, verif)
+      : await simpanCheckIn(foto, verif);
+
+    if (!r.ok) {
+      // Presensi ditolak server. Jangan tampilkan layar Berhasil —
+      // pegawai akan pulang mengira sudah absen padahal belum.
+      v.sibuk = false;
+      pindah('home');
+      toast(r.pesan, 'err');
+      return;
+    }
+
     pindah('sukses');
+    if (r.fotoGagal) {
+      toast('Presensi tercatat, tetapi fotonya gagal terkirim.', 'err');
+    }
   }, 420);
 }
 
@@ -1236,9 +1441,31 @@ function layarSukses() {
    Layar 6 — Riwayat
    ============================================================ */
 
-/** Riwayat satu bulan, digabung dengan presensi hari ini yang tersimpan. */
+/**
+ * Riwayat satu bulan, digabung dengan presensi hari ini.
+ *
+ * Setelah pegawai masuk, isinya presensi sungguhan dari server —
+ * termasuk kosong, kalau memang belum pernah absen. Data contoh hanya
+ * dipakai sebelum ada yang masuk, supaya layar tidak kosong melompong
+ * saat aplikasi baru dibuka.
+ */
 function riwayatBulan(tahun, bulan) {
-  const list = bangunRiwayat(tahun, bulan);
+  const list = AKUN.masuk_()
+    ? PRESENSI.riwayat
+      .filter(r => {
+        const d = new Date(r.tanggal + 'T00:00:00');
+        return d.getFullYear() === tahun && d.getMonth() === bulan;
+      })
+      .map(r => {
+        const d = new Date(r.tanggal + 'T00:00:00');
+        return {
+          tanggal: r.tanggal, tgl: d.getDate(),
+          hari: NAMA_HARI[d.getDay()].slice(0, 3),
+          status: r.status, masuk: r.jamMasuk, keluar: r.jamKeluar || '—',
+        };
+      })
+    : bangunRiwayat(tahun, bulan);
+
   const p = DB.presensi;
   if (p) {
     const d = new Date(p.tanggal + 'T00:00:00');
@@ -1312,7 +1539,13 @@ function layarRiwayat() {
 function layarCuti() {
   const milik = DB.pengajuanSaya();
   const c = hitungSisaCuti();
-  const persen = Math.round(c.terpakai / c.kuota * 100);
+
+  /* Bilahnya mengikuti SISA, sama dengan angka besar di sebelahnya.
+     Sebelumnya angka besarnya sisa (8) sementara bilahnya terisi menurut
+     terpakai (33%) — angka besar "8" di samping bilah sepertiga penuh
+     terbaca sebagai "8 dari 12 sudah dipakai". Keduanya kini bercerita
+     hal yang sama: yang tersisa. Bilahnya menyusut seperti baterai. */
+  const persenSisa = Math.round(c.sisa / c.kuota * 100);
 
   return `
   <div class="screen">
@@ -1323,14 +1556,18 @@ function layarCuti() {
       <div class="saldo-baris" style="margin-top:12px">
         <div>
           <span class="saldo-angka">${c.sisa}</span>
-          <span class="saldo-satuan"> / ${c.kuota} hari</span>
+          <span class="saldo-satuan"> hari tersisa</span>
         </div>
         <div style="text-align:right">
           <div class="eyebrow">Terpakai</div>
-          <div class="saldo-terpakai">${c.terpakai}</div>
+          <div class="saldo-terpakai">${c.terpakai} / ${c.kuota}</div>
         </div>
       </div>
-      <div class="bar"><i style="width:${Math.min(100, persen)}%"></i></div>
+      <div class="bar"><i style="width:${Math.min(100, Math.max(0, persenSisa))}%"></i></div>
+      <div class="ket-kuota">
+        Kuota ini hanya berlaku untuk <strong>Cuti Tahunan</strong>.
+        Izin dan Sakit tidak dibatasi jumlah harinya.
+      </div>
 
       <button class="btn-gold" style="margin-top:26px" data-aksi="cutiForm">
         ${icon('plus', 19, 'currentColor', 2.6)} Ajukan izin atau cuti
@@ -1455,7 +1692,7 @@ function layarProfil() {
 
       <div class="bagian"><div class="eyebrow">Data kepegawaian</div></div>
       <div>
-        <div class="baris"><span class="kiri">NIP</span><span class="kanan tnum">${esc(AKU.nip)}</span></div>
+        <div class="baris"><span class="kiri">NIK</span><span class="kanan tnum">${esc(AKU.nik)}</span></div>
         <div class="baris"><span class="kiri">Unit kerja</span><span class="kanan">${esc(AKU.unit)}</span></div>
         <div class="baris"><span class="kiri">Jabatan</span><span class="kanan">${esc(AKU.jabatan)}</span></div>
         <div class="baris"><span class="kiri">Titik presensi</span><span class="kanan">${esc(DB.kantor.nama)}</span></div>
@@ -1529,7 +1766,10 @@ function renderNav() {
    ============================================================ */
 
 const LAYAR = {
+  memuat: layarMemuat,
   login: layarLogin,
+  daftar: layarDaftar,
+  sandiBaru: layarSandiBaru,
   home: layarHome,
   peta: layarPeta,
   selfie: layarSelfie,
@@ -1548,6 +1788,12 @@ const LAYAR = {
    ada di app.css (.login[data-rapat="1"] dan "2"). */
 const RAPAT_MAKS = 2;
 
+/* Layar Daftar punya tiga kolom isian, bukan dua — justru yang paling
+   mudah meluber. Keempat layar berkerangka .login diukur dengan aturan
+   yang sama. */
+const LAYAR_AKUN = ['memuat', 'login', 'daftar', 'sandiBaru'];
+const layarAkun = () => LAYAR_AKUN.includes(S.layar);
+
 function paskanLogin() {
   const el = $layar.querySelector('.login');
   if (!el) return;
@@ -1565,13 +1811,13 @@ function render() {
   if (S.layar === 'selfie') { nyalakanKamera(); siapkanVerifikasi(); }
   if (S.layar === 'peta') pasangPetaPegawai();
   pasangFormHandler();
-  if (S.layar === 'login') paskanLogin();
+  if (layarAkun()) paskanLogin();
 }
 
 // Tinggi layar berubah saat HP diputar atau bilah peramban muncul/hilang;
 // ukur ulang supaya tingkat perapatannya ikut menyesuaikan.
 window.addEventListener('resize', () => {
-  if (S.layar !== 'login') return;
+  if (!layarAkun()) return;
   // Kecuali saat papan ketik terbuka: tinggi layar menyusut drastis dan
   // ukuran tulisan akan melompat-lompat di tengah pengetikan. Peramban
   // sudah menggeser sendiri kolom yang sedang diisi ke area terlihat,
@@ -1581,14 +1827,14 @@ window.addEventListener('resize', () => {
   paskanLogin();
 });
 window.addEventListener('orientationchange', () => {
-  if (S.layar === 'login') setTimeout(paskanLogin, 250);
+  if (layarAkun()) setTimeout(paskanLogin, 250);
 });
 
 // Caprasimo dan Figtree dimuat dari internet. Sebelum keduanya siap,
 // teks memakai huruf cadangan yang tingginya berbeda — ukur ulang setelah
 // huruf aslinya terpasang.
 if (document.fonts && document.fonts.ready) {
-  document.fonts.ready.then(() => { if (S.layar === 'login') paskanLogin(); });
+  document.fonts.ready.then(() => { if (layarAkun()) paskanLogin(); });
 }
 
 function pindah(layar) {
@@ -1621,8 +1867,46 @@ const AKSI = {
     pindah('cutiForm');
   },
 
-  lihatSandi: () => { S.lihatSandi = !S.lihatSandi; render(); },
-  lupaSandi: () => toast('Hubungi Biro SDM untuk mengatur ulang kata sandi.'),
+  /**
+   * Perlihatkan / sembunyikan kata sandi.
+   *
+   * Sengaja TIDAK memanggil render(): merender ulang membangun formnya
+   * dari awal dan menghapus kata sandi yang sudah diketik. Dulu tidak
+   * terasa karena kolomnya berisi nilai contoh — sekarang kolomnya
+   * kosong, dan pegawai akan kehilangan ketikannya tepat saat ingin
+   * memeriksanya. Jadi kolomnya diubah di tempat.
+   */
+  lihatSandi: () => {
+    S.lihatSandi = !S.lihatSandi;
+    const jenis = S.lihatSandi ? 'text' : 'password';
+    $layar.querySelectorAll('.login input[type="password"], .login input[type="text"][name="sandi"], .login input[type="text"][name="ulang"]')
+      .forEach(i => { if (i.name === 'sandi' || i.name === 'ulang') i.type = jenis; });
+    $layar.querySelectorAll('.login .toggle').forEach(b => {
+      b.innerHTML = icon(S.lihatSandi ? 'eye-off' : 'eye', 18, 'var(--mut)', 2.2);
+      b.setAttribute('aria-label', `${S.lihatSandi ? 'Sembunyikan' : 'Tampilkan'} kata sandi`);
+    });
+  },
+  keDaftar: () => { S.emailIsian = emailDiketik(); pindah('daftar'); },
+  keLogin: () => { S.emailIsian = emailDiketik(); pindah('login'); },
+
+  /**
+   * Kirim tautan setel ulang sandi.
+   *
+   * Emailnya diambil dari kolom yang sedang diisi, bukan dari layar
+   * terpisah — orang yang menekan tombol ini biasanya sudah mengetik
+   * emailnya lalu gagal menebak sandinya.
+   */
+  lupaSandi: async () => {
+    const email = emailDiketik();
+    if (!email) {
+      tulisGalat('errLogin', 'Isi email Anda dulu, lalu tekan "Lupa kata sandi?".');
+      document.getElementById('inpEmail')?.focus();
+      return;
+    }
+    S.emailIsian = email;
+    const r = await AKUN.lupaSandi(email);
+    toast(r.pesan, r.ok ? 'ok' : 'err');
+  },
   notif: () => toast('Pengingat presensi aktif setiap hari kerja.'),
 
   /* Alur presensi: Beranda → Verifikasi lokasi → Selfie → Berhasil */
@@ -1692,45 +1976,76 @@ const AKSI = {
     }
   },
 
-  logout: () => {
-    DB.simpanan.masuk = false;
-    DB.tulis();
+  logout: async () => {
     matikanKamera();
+    await AKUN.keluar();
+    // Profil disegarkan supaya nama dan NIK orang sebelumnya tidak
+    // tertinggal di layar berikutnya.
+    S.emailIsian = '';
+    segarkanProfil();
     pindah('login');
+    toast('Anda sudah keluar.');
   },
 };
 
-/** Catat presensi masuk ke penyimpanan. */
-function simpanCheckIn(foto, verif) {
-  const now = new Date();
-  const jam = fmtJam(now);
-  DB.simpanan.presensi = {
-    tanggal: kunciTanggal(now),
-    jamMasuk: jam,
-    jamKeluar: null,
-    status: jam <= SHIFT.batasTerlambat ? 'Tepat waktu' : 'Terlambat',
-    selfie: foto,
+/**
+ * Hitung ulang jarak ke kantor.
+ *
+ * Dipanggil setiap kali titik kantor berubah — saat admin memindahkannya,
+ * dan saat pengaturan baru saja diambil dari server setelah masuk. Tanpa
+ * ini, pegawai bisa terlihat "di luar kantor" hanya karena jaraknya masih
+ * dihitung terhadap titik lama.
+ */
+function hitungUlangJarak() {
+  if (S.gps.status !== 'ok') return;
+  const k = DB.kantor;
+  const jarak = jarakMeter(S.gps.lat, S.gps.lng, k.lat, k.lng);
+  S.gps.jarak = Math.round(jarak);
+  S.gps.dalam = jarak <= k.radius;
+}
+
+/** Email yang sedang diketik di layar masuk atau daftar. */
+function emailDiketik() {
+  const el = document.getElementById('inpEmail') || document.getElementById('dafEmail');
+  return (el?.value || S.emailIsian || '').trim();
+}
+
+/**
+ * Catat presensi masuk ke server.
+ *
+ * Jam dan status sengaja TIDAK dikirim. Keduanya ditetapkan server dari
+ * jam server dan batas shift di tabel pengaturan — kalau dikirim dari
+ * sini, pegawai yang memundurkan jam HP-nya bisa mengaku tepat waktu.
+ */
+async function simpanCheckIn(foto, verif) {
+  const r = await PRESENSI.checkIn({
+    foto,
     verifikasi: verif,
     lat: S.gps.lat,
     lng: S.gps.lng,
     akurasi: S.gps.akurasi,
     jarak: S.gps.status === 'ok' ? S.gps.jarak : null,
-  };
-  DB.tulis();
+  });
+  if (r.ok) DB.simpanan.presensi = PRESENSI.hariIni;
+  return r;
 }
 
 /** Catat presensi pulang — foto, lokasi, dan hasil verifikasinya sendiri. */
-function simpanCheckOut(foto, verif) {
+async function simpanCheckOut(foto, verif) {
   const p = DB.simpanan.presensi;
-  if (!p || p.jamKeluar) return;
-  p.jamKeluar = fmtJam(new Date());
-  p.selfieKeluar = foto;
-  p.verifikasiKeluar = verif;
-  p.latKeluar = S.gps.lat;
-  p.lngKeluar = S.gps.lng;
-  p.akurasiKeluar = S.gps.akurasi;
-  p.jarakKeluar = S.gps.status === 'ok' ? S.gps.jarak : null;
-  DB.tulis();
+  if (!p) return { ok: false, pesan: 'Belum ada presensi masuk hari ini.' };
+  if (p.jamKeluar) return { ok: false, pesan: 'Anda sudah absen pulang hari ini.' };
+
+  const r = await PRESENSI.checkOut({
+    foto,
+    verifikasi: verif,
+    lat: S.gps.lat,
+    lng: S.gps.lng,
+    akurasi: S.gps.akurasi,
+    jarak: S.gps.status === 'ok' ? S.gps.jarak : null,
+  });
+  if (r.ok) DB.simpanan.presensi = PRESENSI.hariIni;
+  return r;
 }
 
 /* ============================================================
@@ -1746,24 +2061,127 @@ function tanganiKlik(e) {
 $layar.addEventListener('click', tanganiKlik);
 $nav.addEventListener('click', tanganiKlik);
 
-/** Form login & form pengajuan dipasang ulang tiap kali layarnya dirender. */
-function pasangFormHandler() {
+/* ============================================================
+   Form akun — masuk, daftar, kata sandi baru
+   ------------------------------------------------------------
+   Ketiganya memanggil server, jadi ada jeda. Tombolnya dikunci selama
+   menunggu supaya tidak tertekan dua kali — tekanan kedua saat mendaftar
+   akan dijawab "email sudah pernah dipakai", padahal yang memakainya
+   adalah tekanan pertama orang itu sendiri.
+   ============================================================ */
+
+/** Panjang kata sandi terpendek yang diterima. */
+const SANDI_MIN = 8;
+
+function tulisGalat(idKotak, pesan) {
+  const el = document.getElementById(idKotak);
+  if (el) el.innerHTML = pesan ? `<div class="form-error">${esc(pesan)}</div>` : '';
+}
+
+/** Jalankan aksi server sambil mengunci tombol kirimnya. */
+async function kirimForm(form, idGalat, jalankan) {
+  const tombol = form.querySelector('button[type="submit"]');
+  const labelAsli = tombol ? tombol.textContent : '';
+  if (tombol) { tombol.disabled = true; tombol.textContent = 'Mohon tunggu…'; }
+  tulisGalat(idGalat, '');
+  try {
+    return await jalankan();
+  } catch (e) {
+    tulisGalat(idGalat, pesanGalat(e));
+    return { ok: false };
+  } finally {
+    if (tombol && document.body.contains(tombol)) {
+      tombol.disabled = false;
+      tombol.textContent = labelAsli;
+    }
+  }
+}
+
+function pasangFormAkun() {
   const login = document.getElementById('formLogin');
   if (login) {
-    login.addEventListener('submit', e => {
+    login.addEventListener('submit', async e => {
       e.preventDefault();
-      const nip = login.nip.value.trim();
+      const email = login.email.value.trim();
       const sandi = login.sandi.value;
-      const err = document.getElementById('errLogin');
-      if (!nip || !sandi) {
-        err.innerHTML = '<div class="form-error">NIP dan kata sandi wajib diisi.</div>';
-        return;
+      S.emailIsian = email;
+      if (!email || !sandi) {
+        return tulisGalat('errLogin', 'Email dan kata sandi wajib diisi.');
       }
-      DB.simpanan.masuk = true;
-      DB.tulis();
+      const r = await kirimForm(login, 'errLogin', async () => {
+        const m = await AKUN.masuk(email, sandi);
+        if (m.ok) await PRESENSI.muat();
+        return m;
+      });
+      if (!r.ok) return tulisGalat('errLogin', r.pesan);
+
+      S.emailIsian = '';
+      segarkanProfil();
+      hitungUlangJarak();
       pindah('home');
+      toast(r.pesan);
     });
   }
+
+  const daftar = document.getElementById('formDaftar');
+  if (daftar) {
+    daftar.addEventListener('submit', async e => {
+      e.preventDefault();
+      const email = daftar.email.value.trim();
+      const sandi = daftar.sandi.value;
+      const ulang = daftar.ulang.value;
+      S.emailIsian = email;
+
+      if (!email || !sandi) return tulisGalat('errDaftar', 'Email dan kata sandi wajib diisi.');
+      if (sandi.length < SANDI_MIN) {
+        return tulisGalat('errDaftar', `Kata sandi minimal ${SANDI_MIN} karakter.`);
+      }
+      if (sandi !== ulang) return tulisGalat('errDaftar', 'Kedua kata sandi tidak sama.');
+
+      const r = await kirimForm(daftar, 'errDaftar', () => AKUN.daftar(email, sandi));
+      if (!r.ok) return tulisGalat('errDaftar', r.pesan);
+
+      if (r.perluKonfirmasi) {
+        tulisGalat('errDaftar', '');
+        pindah('login');
+        toast(r.pesan);
+        return;
+      }
+      S.emailIsian = '';
+      segarkanProfil();
+      pindah('home');
+      toast(r.pesan);
+    });
+  }
+
+  const baru = document.getElementById('formSandiBaru');
+  if (baru) {
+    baru.addEventListener('submit', async e => {
+      e.preventDefault();
+      const sandi = baru.sandi.value;
+      const ulang = baru.ulang.value;
+
+      if (sandi.length < SANDI_MIN) {
+        return tulisGalat('errSandiBaru', `Kata sandi minimal ${SANDI_MIN} karakter.`);
+      }
+      if (sandi !== ulang) return tulisGalat('errSandiBaru', 'Kedua kata sandi tidak sama.');
+
+      const r = await kirimForm(baru, 'errSandiBaru', () => AKUN.gantiSandi(sandi));
+      if (!r.ok) return tulisGalat('errSandiBaru', r.pesan);
+
+      // Alamat dibersihkan dari sisa tanda pemulihan supaya menyegarkan
+      // halaman tidak membuka layar ini lagi.
+      history.replaceState(null, '', location.pathname);
+      segarkanProfil();
+      pindah(AKUN.masuk_() ? 'home' : 'login');
+      toast(r.pesan);
+    });
+  }
+}
+
+/** Form login & form pengajuan dipasang ulang tiap kali layarnya dirender. */
+function pasangFormHandler() {
+  pasangFormAkun();
 
   const cuti = document.getElementById('formCuti');
   if (cuti) {
@@ -1791,11 +2209,16 @@ function pasangFormHandler() {
         cuti.lampiran.value = '';
         return;
       }
+      // Berkasnya sendiri disimpan, bukan cuma namanya. Sebelumnya hanya
+      // nama yang dicatat — pegawai melihat nama surat dokternya muncul
+      // di layar dan mengira sudah terlampir, padahal tidak ada apa pun
+      // yang terkirim.
       S.form.lampiran = f.name;
+      S.form.lampiranBerkas = f;
       document.getElementById('namaLampiran').textContent = f.name;
     });
 
-    cuti.addEventListener('submit', e => {
+    cuti.addEventListener('submit', async e => {
       e.preventDefault();
       sinkron();
       const { mulai, selesai, alasan, jenis } = S.form;
@@ -1804,24 +2227,54 @@ function pasangFormHandler() {
       if (!alasan.trim()) { toast('Alasan pengajuan wajib diisi.', 'err'); return; }
 
       const hari = hariKerja(mulai, selesai) || 1;
-      if (jenis === 'Cuti Tahunan' && hari > hitungSisaCuti().sisa) {
-        toast('Durasi melebihi sisa cuti tahunan Anda.', 'err');
-        return;
+      // Hanya Cuti Tahunan yang dibatasi. Izin dan Sakit lewat tanpa
+      // pemeriksaan kuota — orang tidak bisa menjadwalkan kapan dia
+      // sakit, dan kendalinya ada pada persetujuan atasan.
+      if (jenis === 'Cuti Tahunan') {
+        const c = hitungSisaCuti();
+        if (hari > c.sisa) {
+          toast(c.sisa === 0
+            ? 'Cuti tahunan Anda sudah habis tahun ini. Ajukan sebagai Izin bila perlu.'
+            : `Cuti tahunan Anda tersisa ${c.sisa} hari, pengajuan ini ${hari} hari.`, 'err');
+          return;
+        }
       }
 
-      DB.simpanan.pengajuan.unshift({
-        id: 'P' + Date.now(),
-        pegawaiId: 1,
-        nama: AKU.nama,
-        inisial: inisialAku,
-        unit: AKU.unit,
-        jenis, mulai, selesai, hari,
-        alasan: alasan.trim(),
-        lampiran: S.form.lampiran || null,
-        status: 'Menunggu',
-        dibuat: kunciTanggal(new Date()),
-      });
-      DB.tulis();
+      if (AKUN.masuk_()) {
+        // Dikirim ke server, bukan disimpan di HP. Sebelumnya tersimpan
+        // di localStorage sementara panel admin membaca dari server —
+        // pengajuannya tidak pernah sampai ke siapa pun, padahal
+        // aplikasi tetap menjawab "terkirim ke atasan".
+        const tombol = cuti.querySelector('button[type="submit"]');
+        const label = tombol ? tombol.innerHTML : '';
+        if (tombol) { tombol.disabled = true; tombol.textContent = 'Mengirim…'; }
+
+        const r = await PRESENSI.kirimPengajuan({
+          jenis, mulai, selesai, hari, alasan,
+          berkas: S.form.lampiranBerkas || null,
+        });
+
+        if (tombol && document.body.contains(tombol)) {
+          tombol.disabled = false; tombol.innerHTML = label;
+        }
+        if (!r.ok) { toast(r.pesan, 'err'); return; }
+        S.form.lampiranBerkas = null;
+      } else {
+        DB.simpanan.pengajuan.unshift({
+          id: 'P' + Date.now(),
+          pegawaiId: 1,
+          nama: AKU.nama,
+          inisial: inisialAku,
+          unit: AKU.unit,
+          jenis, mulai, selesai, hari,
+          alasan: alasan.trim(),
+          lampiran: S.form.lampiran || null,
+          status: 'Menunggu',
+          dibuat: kunciTanggal(new Date()),
+        });
+        DB.tulis();
+      }
+
       S.form = { jenis: 'Izin', mulai: '', selesai: '', alasan: '', lampiran: '' };
       pindah('cuti');
       toast('Pengajuan terkirim ke atasan.');
@@ -1839,18 +2292,18 @@ function pasangFormHandler() {
 
 window.addEventListener('storage', e => {
   if (e.key !== KUNCI_SIMPAN) return;
+
+  // Setelah pegawai masuk, titik kantor dan presensi datang dari server.
+  // Membaca ulang localStorage di sini justru akan menimpanya dengan
+  // nilai lama yang masih tertinggal di perangkat.
+  if (AKUN.masuk_()) return;
+
   const kantorLama = JSON.stringify(DB.kantor);
   const profilLama = JSON.stringify(DB.profil());
 
   if (!DB.segarkanDariPenyimpanan()) return;
 
-  // Jarak dihitung ulang terhadap titik kantor yang baru sebelum dirender.
-  if (S.gps.status === 'ok') {
-    const k = DB.kantor;
-    const jarak = jarakMeter(S.gps.lat, S.gps.lng, k.lat, k.lng);
-    S.gps.jarak = Math.round(jarak);
-    S.gps.dalam = jarak <= k.radius;
-  }
+  hitungUlangJarak();
   render();
 
   if (JSON.stringify(DB.kantor) !== kantorLama) toast('Titik kantor diperbarui oleh admin.');
@@ -1878,3 +2331,43 @@ render();
 mulaiGPS();
 
 if (HASIL_SETUP) toast(HASIL_SETUP.pesan, HASIL_SETUP.ok ? 'ok' : 'err');
+
+/**
+ * Periksa sesi ke server, lalu tentukan layar sebenarnya.
+ *
+ * Sampai jawaban server datang, layar "memuat" yang tampil. Yang
+ * menentukan pegawai boleh masuk atau tidak adalah jawaban itu — bukan
+ * penanda di perangkat, yang bisa saja tertinggal setelah akunnya
+ * dinonaktifkan admin.
+ */
+(async () => {
+  try {
+    await AKUN.muat();
+  } catch (e) {
+    // Server tidak terjangkau. Jangan biarkan layar "memuat" menggantung
+    // selamanya — turunkan ke layar masuk dengan keterangan apa adanya.
+    segarkanProfil();
+    pindah('login');
+    toast(pesanGalat(e), 'err');
+    return;
+  }
+
+  segarkanProfil();
+
+  // Tautan setel ulang sandi dari email sudah membuka layarnya sendiri
+  // lewat peristiwa PASSWORD_RECOVERY; jangan ditimpa ke beranda.
+  if (AKUN.modePulihkanSandi) return;
+
+  if (!AKUN.masuk_()) { pindah('login'); return; }
+
+  // Titik kantor, jam shift, presensi hari ini, dan riwayat diambil dari
+  // server. Jaraknya dihitung ulang sesudahnya karena titik kantor bisa
+  // saja berbeda dari yang dipakai saat GPS pertama kali menjawab.
+  try {
+    await PRESENSI.muat();
+    hitungUlangJarak();
+  } catch (e) {
+    toast(pesanGalat(e), 'err');
+  }
+  pindah('home');
+})();
